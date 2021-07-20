@@ -24,13 +24,11 @@
     // top: 0px;
     max-width: 100%;
     max-height: 200px;
-    overflow: hidden;
     text-align: left;
   }
 
   &__preview > img {
     pointer-events: none;
-    transform-origin: top left;
   }
 
   &__overlay {
@@ -49,7 +47,7 @@
     opacity: 0.3;
     user-select: none;
 
-    transition: all ease-in-out 0.2s;
+    transition: all ease-in-out 0.05s;
 
     &--selected {
       color: #F44336;
@@ -71,5 +69,10 @@
     align-items: center;
     min-width: 80px;
     justify-content: space-between;
+  }
+
+  &__image-crop {
+    overflow: hidden;
+    transform-origin: top left;
   }
 }

@@ -6,9 +6,6 @@
 
   > * {
     -webkit-app-region: no-drag;
-  }
-
-  &__win-buttons {
     display: flex;
 
     &--reverse {
@@ -16,7 +13,25 @@
     }
   }
 
+  &--reverse {
+    flex-direction: row-reverse;
+  }
+
   &__win-buttons > .uibutton {
     margin-left: 5px;
+  }
+
+  &__title-container {
+    width: 105px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__title {
+    -webkit-app-region: drag;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    user-select: none;
   }
 }

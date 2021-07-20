@@ -1,8 +1,8 @@
 import { MouseEvent, useCallback, useEffect, useState } from "react"
-import { FC, HTMLDiv, cx, css, bem, Button, Icon, Electron, useTheme, capitalize } from "../ui"
+import { FC, HTMLDiv, cx, css, bem, Button, Icon, Electron, useTheme, capitalize, css_popbox } from "ts/ui"
 import { nanoid } from 'nanoid'
 import tinycolor from "tinycolor2"
-// import tinycolor from "tinycolor2"
+import { useProject } from "ts/project"
 
 export type ItemOptions = {
   id?:string,
@@ -32,22 +32,11 @@ const Item: FC<IItem> = ({ className, id, name, type, isChild, children, _images
   const theme = useTheme()
 
   const type_color = theme.color.type[type.toLowerCase()]
-
-  const bg_color = tinycolor(type_color).brighten(10).toHexString()
   const shadow_color = tinycolor(type_color).darken(25).toHexString()
-  const text_color = tinycolor(type_color).isDark() ? tinycolor(type_color).brighten(50).toHexString() : shadow_color
 
   return (
     <div 
-      className={cx(bss("item", { expanded }), css`
-        color: ${text_color};
-        background-color: ${bg_color};
-        
-        ${expanded ? '&' : '&:hover'} {
-          border-color: ${shadow_color};
-          box-shadow: 1px 1px ${shadow_color}, 2px 2px ${shadow_color}, 3px 3px ${shadow_color};
-        }
-        `, className)}
+      className={cx(css_popbox(type_color, 3, !expanded), bss("item", { expanded }), className)}
         {...props}
     >
       <div 
@@ -94,6 +83,7 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, ...props }:
   const theme = useTheme()
   const [types, setTypes] = useState<string[]>([])
   const [items, setItems] = useState<ItemOptions[]>([])
+  const { isOpen } = useProject()
 
   const addItem = useCallback((opts:ItemOptions) => {
     const type_lower = opts.type.toLowerCase()
@@ -148,7 +138,7 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, ...props }:
         })}
       </div>
       <div className={bss("controls")}>
-        <Button icon="plus" onClick={() => showAddMenu()} />
+        {isOpen && <Button icon="plus" onClick={() => showAddMenu()} />}
       </div>
     </div>
   )

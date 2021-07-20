@@ -77,7 +77,7 @@
   justify-content: space-between;
   font-size: 1rem;
 
-  &__input {
+  &__input, &__select-input {
     border-radius: 2px;
     border: none;
     font-size: 1rem;
@@ -86,7 +86,7 @@
     width: 100%;
   }
 
-  &--labeled &__input {
+  &--labeled > * {
     margin-left: 4px;
   }
 }
@@ -94,7 +94,7 @@
 // form 
 
 .uiform {
-  > *:not(:last-child) {
+  > *:not(:last-child):not(:empty) {
     padding-bottom: 3px;
   }
 

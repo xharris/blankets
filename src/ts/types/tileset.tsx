@@ -1,7 +1,9 @@
 import { bem, cx, css, css_popbox, Button, Form } from "ts/ui"
 import { FCItemBody } from "ts/sidebar"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import TileBgImage from "./tilebg.png"
+import { useProject } from "ts/project"
+import { basename } from "path"
 // import { useGlobalCtx } from "ts/globalcontext"
 
 const bss = bem("tileset")
@@ -11,6 +13,14 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
   const [imageSize, setImageSize] = useState([0,0])
   const [selectedTiles, setSelectedTiles] = useState<{[key:number]:boolean}>({})
   const [zoom, setZoom] = useState<number>(1)
+  const { assets } = useProject()
+
+  const onTileClick = useCallback((idx, v) => {
+    setSelectedTiles({
+      ...selectedTiles,
+      [idx]:v
+    })
+  }, [setSelectedTiles, selectedTiles])
 
   useEffect(() => {
     if (image) {
@@ -38,6 +48,7 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
           () => image && (
             <div className={bss("image-info")}>
               <div>{imageSize.join(' x ')}</div>
+              <Button icon="x-square" title="clear selected tiles" onClick={() => setSelectedTiles({})} />
               <div className={bss("preview-controls")}>
                 <Button icon="zoom-out" onClick={() => setZoom(Math.max(zoom - 0.1, 0))} />
                 {`${(zoom * 100).toFixed()}%`}
@@ -49,11 +60,9 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
             <div className={cx(bss("preview"), css_popbox("#212121"), css`
               background-image: url(${TileBgImage});
               background-position: ${-crop.x || 0}px ${-crop.y || 0}px;
-              width: ${Math.min(croppedImageSize[0], 200)}px;
+              max-width: ${Math.min(croppedImageSize[0], 200)}px;
               height: ${Math.min(croppedImageSize[1], 200)}px;
-              ${croppedImageSize[0] > 200 && croppedImageSize[1] > 200 && `
               overflow: auto;
-              `}
             `)}>
               <div className={cx(bss("overlay"), css`
                 width: ${croppedImageSize[0]}px;
@@ -67,24 +76,35 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
                       width: ${size.w}px;
                       height: ${size.h}px;
                     `)}
-                    onClick={() => {
-                      setSelectedTiles({
-                        ...selectedTiles,
-                        [idx]:!selectedTiles[idx]
-                      })
+                    // onClick={() => {
+                    //   setSelectedTiles({
+                    //     ...selectedTiles,
+                    //     [idx]:!selectedTiles[idx]
+                    //   })
+                    // }}
+                    onClick={() => 
+                      onTileClick(idx, true)
+                    }
+                    onContextMenu={() => 
+                      onTileClick(idx, false)
+                    }
+                    onMouseOver={e => {
+                      if (e.buttons !== 0)
+                        onTileClick(idx, e.buttons === 1)
                     }}
                   />
                 ))}
               </div>
-              <img 
-                className={css`  
-                  transform: scale(${zoom}) translate(${-crop.x || 0}px, ${-crop.y || 0}px) ;
-                  width: ${croppedImageSize[0]}
-                  height: ${croppedImageSize[1]}
-                `}
-                src={`file://${image}`} 
-                onLoad={e => { setImageSize([e.currentTarget.clientWidth, e.currentTarget.clientHeight]) }}
-              />
+              <div className={cx(bss("image-crop"), css`
+                transform: scale(${zoom}) translate(${-crop.x || 0}px, ${-crop.y || 0}px) ;
+                width: ${croppedImageSize[0]}px;
+                height: ${croppedImageSize[1]}px;
+              `)}>
+                <img
+                  src={`file://${image}`} 
+                  onLoad={e => { setImageSize([e.currentTarget.clientWidth, e.currentTarget.clientHeight]) }}
+                />
+              </div>
             </div>
           ), 
           "size", 
@@ -92,13 +112,8 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
         ]}
         options={{
           image: { 
-            type:"file", 
-            chooseFileOptions: {
-              filters: [
-                { name: 'Images', extensions: ['jpg', 'png', 'gif'] },
-                { name: 'All Files', extensions: ['*'] }
-              ]
-            }
+            type:"select", 
+            values: assets.image.map(img => [img, basename(img)])
           },
           size: {
             type: "number",
@@ -114,7 +129,6 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
           }
         }}
         onChange={(e, name, subname) => {
-          console.log(e, name, subname)
           switch (name) {
             case "name": 
               updateItem(id, { name: e.target.value })
@@ -124,14 +138,9 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
               break 
             case "crop":
               updateItem(id, { crop: { ...crop, [subname]: e.target.valueAsNumber } })
-          }
-        }}
-        onFile={(res, name) => {
-          console.log(res, name)
-          switch (name) {
+              break
             case "image":
-              if (res.filePaths.length > 0)
-                updateItem(id, { image: res.filePaths[0] })
+              updateItem(id, { image: e.target.value })
               break
           }
         }}

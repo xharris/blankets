@@ -15,14 +15,13 @@
     align-items: flex-start;
     padding-bottom: 3px; // to prevent &__item box-shadow from being clipped
     box-sizing: border-box;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 5px;
   }
 
   &__item {
     display: flex;
-    border-radius: 2px;
-    border: 1px solid;
-    border-color: transparent;
-    box-shadow: 0px 0px transparent, 0px 0px transparent, 0px 0px transparent;
     flex-direction: column;
     max-width: 100%;
     
@@ -60,8 +59,12 @@
   }
 
   &__image {    
-    min-width: 16px;
+    min-width: 25px;
     height: 16px;
     background-repeat: no-repeat;
+  }
+
+  &__item--expanded &__images {
+    display: none;
   }
 }

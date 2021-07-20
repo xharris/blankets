@@ -1,7 +1,7 @@
 import { css, cx } from "@emotion/css"
 import * as FIcon from "react-feather"
 import { dialog, Menu } from "@electron/remote"
-import { FunctionComponent, HTMLAttributes, createContext, useContext, InputHTMLAttributes, FormHTMLAttributes, useState, useEffect } from "react"
+import React, { FunctionComponent, HTMLAttributes, createContext, useContext, InputHTMLAttributes, FormHTMLAttributes, useState, useEffect } from "react"
 import tinycolor from "tinycolor2"
 import { basename } from "path"
 
@@ -58,14 +58,26 @@ export const pickBgColor = (fg: tinycolor.ColorInput, amount?: number) => {
   return fg_color.isLight() ? fg_color.darken(amount) : fg_color.brighten(amount)
 }
 
-export const css_popbox = (color:string, thickness=2) => {
-  const shadow = tinycolor(color).lighten(20).toHexString()
+export const css_popbox = (color:string, thickness=2, only_hover=false) => {
+  
+  const shadow = tinycolor(color).darken(25).toHexString()
+
+  // const shadow = tinycolor(color).lighten(20).toHexString()
+  const bg_color = tinycolor(color).brighten(10).toHexString()
+  const text_color = tinycolor(color).isDark() ? tinycolor(color).brighten(50).toHexString() : shadow
   return css`
-    border: ${thickness}px solid ${color};
+    color: ${text_color};
+    background-color: ${bg_color};
+    border: ${Math.max(0, thickness-1)}px solid transparent;
     border-radius: ${thickness}px;
-    box-shadow: 1px 1px ${shadow}, 2px 2px ${shadow}, 3px 3px ${shadow};
     margin-right: ${thickness}px;
     margin-bottom: ${thickness}px;
+    // box-sizing: border-box;
+
+    ${only_hover ? '&:hover' : '&'} {
+      box-shadow: ${new Array(thickness).fill(0).map((_, i) => `${i}px ${i}px ${shadow}`).join(', ')} ;
+      border-color: ${color};
+    }
   `
 }
 
@@ -123,7 +135,8 @@ interface IInput extends InputHTMLAttributes<HTMLInputElement> {
   chooseFileOptions?:chooseFileOptions,
   onFile?: (v:Electron.OpenDialogReturnValue) => any,
   onError?: (...args:any[]) => void,
-  icon?: string
+  icon?: string,
+  values?: [string, string][]
 }
 const bss_input = bem("uiinput")
 export const Input: FC<IInput> = ({ 
@@ -137,10 +150,11 @@ export const Input: FC<IInput> = ({
   onFile = () => {},
   onError,
   icon = "file",
+  values,
   ...props 
 }) => {
   const [value, setValue] = useState<string[]>([].concat(props.defaultValue).filter(p => p))
-
+  
   return (
     <label
       className={cx(bss_input({ labeled: !!label }), className)}
@@ -161,7 +175,20 @@ export const Input: FC<IInput> = ({
               .catch(onError)
           }
         />
-        :
+      : type === "select" ?
+        <select
+          className={cx(bss_input("select-input"), inputClassName)}
+          {...(props as unknown as React.SelectHTMLAttributes<HTMLSelectElement>)}
+          value={props.defaultValue || "_DEFAULT_"}
+          title={(title || props.defaultValue || "").toString()}
+        >
+          <option key="_default" value="_DEFAULT_" disabled hidden>{props.placeholder || "..."}</option>
+          {values.map(v => {
+            const [value, label] = v
+            return <option key={value} value={value}>{label}</option>
+          })}
+        </select>
+      :
         <input
           className={cx(bss_input("input"), inputClassName)}
           type={type}
@@ -268,11 +295,11 @@ export const Form: FC<IForm> = ({ className, defaultValue, order, options = {}, 
   </form>
 )
 
-
 // Electron
 
 interface chooseFileOptions extends Electron.OpenDialogOptions {
-  multiple?: boolean
+  multiple?: boolean,
+  folder?: boolean
 }
 
 export class Electron {
@@ -283,7 +310,7 @@ export class Electron {
 
   static chooseFile(options: chooseFileOptions = {}) {
     return dialog.showOpenDialog({
-      properties: ['openFile', options.multiple ? 'multiSelections' : null],
+      properties: [options.folder ? 'openDirectory' : 'openFile', options.multiple ? 'multiSelections' : null],
       ...options
     })
   }
