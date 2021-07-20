@@ -1,0 +1,22 @@
+.nav {
+  -webkit-app-region: drag;
+  display: flex;
+  justify-content: space-between;
+  padding: $container-padding;
+
+  > * {
+    -webkit-app-region: no-drag;
+  }
+
+  &__win-buttons {
+    display: flex;
+
+    &--reverse {
+      flex-direction: row-reverse;
+    }
+  }
+
+  &__win-buttons > .uibutton {
+    margin-left: 5px;
+  }
+}

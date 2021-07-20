@@ -1,0 +1,14 @@
+.layer {
+
+  > *:not(:last-child) {
+    margin-bottom: 5px;
+  }
+
+  &__name-input {
+    width: 85px;
+  }
+
+  &__z-input {
+    width: 40px;
+  }
+}

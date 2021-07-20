@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+      "baseUrl": "./src",
+      "paths": {
+         "@src/*": ["./src/*", "./src/*/index.tsx"],
+         "@ts/*": ["./src/ts/*", "./src/ts/*/index.tsx"],
+         "@sass/*": ["./src/sass/*", "./src/sass/*/index.scss"]
+       }
+  }
+}

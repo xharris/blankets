@@ -1,0 +1,15 @@
+$container-padding: 5px;
+
+@import "./ui.scss";
+@import "./nav.scss";
+@import "./sidebar.scss";
+@import "./layer.scss";
+@import "./tileset.scss";
+@import "./canvas.scss";
+
+html, body {
+  width: 100%;
+  margin: 0px;
+  height: 100%;
+  overflow: hidden;
+}

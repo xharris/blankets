@@ -1,0 +1,18 @@
+{
+  "defaultSeverity": "error",
+  "extends": ["tslint:recommended"],
+  "rules": {
+    "max-line-length": {
+      "options": [120]
+    },
+    "indent": [true, "tabs", 4],
+    "trailing-comma": false,
+    "no-console": false,
+    "variable-name": [
+      true,
+      "ban-keywords",
+      "check-format",
+      "allow-leading-underscore"
+    ]
+  }
+}
