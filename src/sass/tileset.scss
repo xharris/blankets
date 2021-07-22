@@ -25,6 +25,7 @@
     max-width: 100%;
     max-height: 200px;
     text-align: left;
+    padding: 1px;
   }
 
   &__preview > img {
@@ -35,7 +36,6 @@
     position: absolute;
     display: inline-flex;
     flex-wrap: wrap;
-    transform-origin: top left;
     z-index: 10;
   }
 
@@ -73,6 +73,11 @@
 
   &__image-crop {
     overflow: hidden;
+    display: inline-block;
+  }
+
+  &__preview-inner {
+    display: inline-block;
     transform-origin: top left;
   }
 }

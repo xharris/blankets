@@ -1,27 +1,60 @@
 // import { useCallback, useEffect, useState } from "react"
-import { bem, Input } from "ts/ui"
-import { FCItemBody } from "ts/sidebar"
+import { bem, Form } from "ts/ui"
+import { FCItemBody, IItemBody } from "ts/sidebar"
+import { useCanvasCtx } from "ts/canvas"
 
 const bss = bem("layer")
 
-export const Layer: FCItemBody = ({ id, name, z, updateItem }) => {
+interface LayerBody extends IItemBody {
+  snap: { x:number, y:number },
+  offset: { x:number, y:number }
+}
+
+export const Layer: FCItemBody<LayerBody> = ({ id, name, z, snap, offset, updateItem }) => {
+  const { updateLayer } = useCanvasCtx()
+
   return (
     <div className={bss()}>
-      <Input
-        inputClassName={bss("name-input")}
-        label="Name"
-        type="text" 
-        name="name" 
-        defaultValue={name}
-        onChange={e => updateItem(id, { name:e.target.value })} 
-      />
-      <Input
-        inputClassName={bss("z-input")}
-        label="Z"
-        type="number" 
-        name="z" 
-        defaultValue={z}
-        onChange={e => updateItem(id, { z:e.target.valueAsNumber })} 
+      <Form 
+        defaultValue={{ name, z, snap, offset }}
+        order={["name", "z", "snap", "offset"]}
+        onChange={(e, name, subname) => {
+          let new_val
+          switch(name) {
+            case "name":
+              updateItem(id, { name: e.target.value })
+              break
+            case "z":
+              new_val = { z: { ...z, [subname]: e.target.valueAsNumber || 0 } }
+              updateItem(id, new_val)
+              updateLayer(id, new_val)
+              break
+            case "snap": 
+            new_val = { snap: { ...snap, [subname]: e.target.valueAsNumber || 0 } }
+            updateItem(id, new_val)
+            updateLayer(id, new_val)
+              break
+            case "offset":
+              new_val = { offset: { ...offset, [subname]: e.target.valueAsNumber || 0 } }
+              updateItem(id, new_val)
+              updateLayer(id, new_val)
+              break
+          }
+        }}
+        options={{
+          z: {
+            type: "number"
+          },
+          snap: {
+            type: "number",
+            min: 0,
+            names: ['x','y']
+          },
+          offset: {
+            type: "number", 
+            names: ['x','y']
+          }
+        }}
       />
     </div>
   )

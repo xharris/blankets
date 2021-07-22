@@ -68,10 +68,9 @@ export const css_popbox = (color:string, thickness=2, only_hover=false) => {
   return css`
     color: ${text_color};
     background-color: ${bg_color};
-    border: ${Math.max(0, thickness-1)}px solid transparent;
+    border: ${Math.max(0, thickness-2)}px solid transparent;
     border-radius: ${thickness}px;
-    margin-right: ${thickness}px;
-    margin-bottom: ${thickness}px;
+    margin-right: ${thickness-1}px;
     // box-sizing: border-box;
 
     ${only_hover ? '&:hover' : '&'} {
@@ -247,7 +246,7 @@ export const Form: FC<IForm> = ({ className, defaultValue, order, options = {}, 
             className={bss_form("group")}
             key={`group-${name}`}
           >
-            <div className={bss_form("group-label")}>{capitalize(name) || opts.label}</div>
+            <div className={bss_form("group-label")}>{opts.label || capitalize(name)}</div>
             <div className={bss_form("subgroups")}>
               {subnames.map((group, g) => 
                 <div
@@ -255,7 +254,7 @@ export const Form: FC<IForm> = ({ className, defaultValue, order, options = {}, 
                   className={bss_form("subgroup")}
                 > 
                   {group.map((subname) => {
-                    const suboptions = opts.options ? opts.options[subname] : opts
+                    const suboptions = opts.options ? { ...opts, label:null, ...opts.options[subname] } : opts
                     
                     return (
                       <Input 
@@ -320,10 +319,20 @@ export class Electron {
 
 export type ObjectAny<T = any> = {[key:string]:T}
 
+export type ValueOf<T> = T[keyof T]
+
+declare global {
+  interface ObjectConstructor {
+      typedKeys<T>(obj: T): Array<keyof T>
+  }
+}
+Object.typedKeys = Object.keys as any
+
 export const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1)
 
 export const useWindowSize = () => {
-  const [size, setSize] = useState([])
+  const [size, setSize] = useState([window.innerWidth, window.innerHeight])
+
   useEffect(() => {
     let evt = () => {
       setSize([window.innerWidth, window.innerHeight])

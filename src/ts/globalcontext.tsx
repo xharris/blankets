@@ -1,16 +1,26 @@
 import { useContext, createContext, useState, useEffect } from "react"
 import { ObjectAny } from "ts/ui"
 
-interface IGlobalCtx {
-  data: ObjectAny,
-  set: (category:string, data:ObjectAny) => void,
-  update: (category:string, data:ObjectAny) => void
+interface IGlobalCtx<T> {
+  data: T,
+  set: (category:string, data:T) => void,
+  update: (category:string, data:Partial<T>) => void
 }
 
-const GlobalCtx = createContext<IGlobalCtx | null>(null)
+interface IUseGlobalCtx<T> {
+  data: T,
+  set: (data:T) => void,
+  update: (data:Partial<T>) => void
+}
 
-export const GlobalCtxProvier = (props:ObjectAny) => {
-  const [data, setData] = useState<IGlobalCtx["data"]>({})
+const GlobalCtx = createContext<IGlobalCtx<any>>({
+  data: {},
+  set: () => {},
+  update: () => {}
+})
+
+export const GlobalCtxProvider = (props:ObjectAny) => {
+  const [data, setData] = useState<ObjectAny>({})
 
   return (
     <GlobalCtx.Provider {...props} value={{
@@ -21,7 +31,7 @@ export const GlobalCtxProvier = (props:ObjectAny) => {
   )
 }
 
-export const useGlobalCtx = (category?:string) => {
+export const useGlobalCtx = <T, >(category?:string): IUseGlobalCtx<T> => {
   const {data, set, update} = useContext(GlobalCtx)
 
   useEffect(() => {
@@ -30,8 +40,8 @@ export const useGlobalCtx = (category?:string) => {
   }, [data, category])
 
   return {
-    data: data[category] || {},
-    set: (new_data:IGlobalCtx["data"]) => set(category, new_data),
-    update: (new_data:IGlobalCtx["data"]) => update(category, new_data),
-  }
+    data: data[category] ?? {},
+    set: (new_data) => set(category, new_data),
+    update: (new_data) => update(category, new_data),
+  } 
 }

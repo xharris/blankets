@@ -1,4 +1,8 @@
 .nav {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  right: 0px;
   -webkit-app-region: drag;
   display: flex;
   justify-content: space-between;
