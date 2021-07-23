@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { bem,  useWindowSize } from "ts/ui"
 import { useGlobalCtx } from "./globalcontext"
 import * as PIXI from "pixi.js"
+// import { Stage, Container, Sprite } from "@inlet/react-pixi"
 // import { useProject } from "./project"
 
 type TileCropInfo = { path:string, x:number, y:number, w:number, h:number }
@@ -97,6 +98,8 @@ export const Canvas = () => {
   const [app, setApp] = useState<PIXI.Application>()
   const [grid, setGrid] = useState<PIXI.Graphics>()
   const [tileContainer, setTileContainer] = useState<PIXI.Container>()
+  // const [overlayContainer, setOverlayContainer] = useState<PIXI.Container>()
+  // const [infoText, setInfoText] = useState<PIXI.Text>()
 
   // setup pixi.js
   useEffect(() => {
@@ -105,11 +108,14 @@ export const Canvas = () => {
         backgroundColor:0xEEEEEE
       })
       el_canvas.current.appendChild(new_app.view)
+      
       let new_grid = new PIXI.Graphics()
-      new_app.stage.addChild(new_grid)
       let new_tile = new PIXI.Container()
-      new_app.stage.addChild(new_tile)
+      let new_overlay = new PIXI.Container()
+
+      new_app.stage.addChild(new_grid, new_tile, new_overlay)
       setTileContainer(new_tile)
+      // setOverlayContainer(new_overlay)
 
       setApp(new_app)
       setGrid(new_grid) 

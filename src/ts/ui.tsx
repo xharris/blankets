@@ -178,6 +178,7 @@ export const Input: FC<IInput> = ({
         <select
           className={cx(bss_input("select-input"), inputClassName)}
           {...(props as unknown as React.SelectHTMLAttributes<HTMLSelectElement>)}
+          defaultValue={null}
           value={props.defaultValue || "_DEFAULT_"}
           title={(title || props.defaultValue || "").toString()}
         >

@@ -1333,6 +1333,11 @@
   dependencies:
     "@hapi/hoek" "^9.0.0"
 
+"@inlet/react-pixi@^6.6.3":
+  version "6.6.3"
+  resolved "https://registry.yarnpkg.com/@inlet/react-pixi/-/react-pixi-6.6.3.tgz#dca36614046cc28cf698c7ac34351e5d13c8be53"
+  integrity sha512-KcP/xQyvF8sjnCiSmbG0q3RX0UxxAaafbwRZpAJswQF9BiJP3WOt/JQdaYDzFx91lO+JCWwDiFuuVRZIUak2Zg==
+
 "@istanbuljs/load-nyc-config@^1.0.0":
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/@istanbuljs/load-nyc-config/-/load-nyc-config-1.1.0.tgz#fd3db1d59ecf7cf121e80650bb86712f9b55eced"
