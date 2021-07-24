@@ -25,14 +25,14 @@ export const Layer: FCItemBody<LayerBody> = ({ id, name, z, snap, offset, update
               updateItem(id, { name: e.target.value })
               break
             case "z":
-              new_val = { z: { ...z, [subname]: e.target.valueAsNumber || 0 } }
+              new_val = { z: e.target.valueAsNumber || 0 }
               updateItem(id, new_val)
               updateLayer(id, new_val)
               break
             case "snap": 
-            new_val = { snap: { ...snap, [subname]: e.target.valueAsNumber || 0 } }
-            updateItem(id, new_val)
-            updateLayer(id, new_val)
+              new_val = { snap: { ...snap, [subname]: e.target.valueAsNumber || 0 } }
+              updateItem(id, new_val)
+              updateLayer(id, new_val)
               break
             case "offset":
               new_val = { offset: { ...offset, [subname]: e.target.valueAsNumber || 0 } }

@@ -14,7 +14,7 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
   const [imageSize, setImageSize] = useState([0,0])
   const [selectedTiles, setSelectedTiles] = useState<ObjectAny<number>>({})
   const [zoom, setZoom] = useState<number>(1)
-  const { assets } = useProject()
+  const { assets } = useProject() // HELP: assets are empty
   const canvas = useCanvasCtx()
 
   let croppedImageSize = [imageSize[0] - (crop.x || 0), imageSize[1] - (crop.y || 0)]

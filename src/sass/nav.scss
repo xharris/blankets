@@ -25,6 +25,10 @@
     margin-left: 5px;
   }
 
+  &__left > * {
+    margin-right: 5px;
+  }
+
   &__title-container {
     width: 105px;
     display: flex;

@@ -62,10 +62,15 @@
 
   transition: all 0.1s ease-in-out;
 
-  &:hover {
+  &:hover:enabled {
     opacity: 0.8;
     border-radius: 4px;
     background: #E0E0E0;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.2;
   }
 }
 

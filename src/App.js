@@ -7,6 +7,7 @@ import { Map } from "ts/types/map"
 import { Node } from "ts/types/node"
 import { Canvas } from "ts/canvas"
 import { GlobalCtxProvider } from 'ts/globalcontext';
+import { SaveCtxProvider } from 'ts/savecontext';
 import { useCanvasCtx } from "ts/canvas"
 
 import './App.css';
@@ -18,34 +19,34 @@ const App = () => {
 
   return (
     <GlobalCtxProvider>
-      <ThemeProvider value={{
-        color: {
-          fg: "#FDD835",
-          bg: "#FAFAFA",
-          type: {
-            // entity: "#C8E6C9",
-            // component: "#B2EBF2",
-            // system: "#F8BBD0",
+      <SaveCtxProvider>
+        <ThemeProvider value={{
+          color: {
+            fg: "#FDD835",
+            bg: "#FAFAFA",
+            type: {
+              // entity: "#C8E6C9",
+              // component: "#B2EBF2",
+              // system: "#F8BBD0",
 
-            layer: "#64B5F6",
-            node: "#B0BEC5",
-            tileset: "#FFB74D",
-            label: "#81C784",
-            map: "#B39DDB"
+              layer: "#64B5F6",
+              node: "#B0BEC5",
+              tileset: "#FFB74D",
+              label: "#81C784",
+              map: "#B39DDB"
+            }
           }
-        }
-      }}>
-        <AppBody />
-      </ThemeProvider>
+        }}>
+          <AppBody />
+        </ThemeProvider>
+      </SaveCtxProvider>
     </GlobalCtxProvider>
   );
 }
 
 
 const AppBody = () => {
-  const { addLayer, removeLayer, setCurrentLayer } = useCanvasCtx()
-
-
+  const { addLayer, removeLayer, setCurrentLayer, addMap, removeMap, setCurrentMap } = useCanvasCtx()
 
   return (
     <div className="App">
@@ -73,14 +74,20 @@ const AppBody = () => {
         onItemClick={(e, item) => {
           if (item.type === "layer")
             setCurrentLayer(item.id)
+          if (item.type === "map")
+            setCurrentMap(item.id)
         }}
         onItemAdd={item => {
           if (item.type === "layer")
             addLayer(item.id, item)
+          if (item.type === "map")
+            addMap(item.id, item)
         }}
         onItemDelete={item => {
           if (item.type === "layer")
             removeLayer(item.id)
+          if (item.type === "map")
+            removeMap(item.id)
         }}
       />
       <Canvas />

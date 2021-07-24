@@ -5,15 +5,27 @@ import { useProject } from "ts/project"
 const bss = bem("nav")
 
 export const Nav = () => {
-  const { name, openProjectDialog } = useProject()
+  const { settings, name, loading, isOpen, openProjectDialog, saveProject } = useProject()
 
   return (
     <div className={bss({ reverse: process.platform === "darwin" })}>
       <div className={bss("left")}>
         <div className={bss("title-container")}>
-          <div className={bss("title")}>{name}</div>
+          <div className={bss("title")}>{loading ? "..." : name}</div>
         </div>
-        <Button className={bss("open")} icon="folder" onClick={() => openProjectDialog()} />
+        <Button 
+          className={bss("open")} 
+          icon="folder" 
+          onClick={() => openProjectDialog()}
+          title="Open a project..."  
+        />
+        <Button 
+          className={bss("save")} 
+          icon="save" 
+          disabled={!isOpen || settings.auto_save} 
+          title={settings.auto_save ? "Auto-save is turned on" : "Save project"}
+          onClick={() => saveProject()} 
+        />
       </div>
       <div className={bss("win-buttons", { reverse: process.platform === "darwin" })}>
         <Button className={bss("min")} icon="minus" />

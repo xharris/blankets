@@ -59,12 +59,11 @@ export const pickBgColor = (fg: tinycolor.ColorInput, amount?: number) => {
 }
 
 export const css_popbox = (color:string, thickness=2, only_hover=false) => {
-  
-  const shadow = tinycolor(color).darken(25).toHexString()
-
+  const boxShadow = (c:string) => new Array(thickness).fill(0).map((_, i) => `${i}px ${i}px ${c}`).join(', ')
+  const shadow_color = tinycolor(color).darken(25).toHexString()
   // const shadow = tinycolor(color).lighten(20).toHexString()
   const bg_color = tinycolor(color).brighten(10).toHexString()
-  const text_color = tinycolor(color).isDark() ? tinycolor(color).brighten(50).toHexString() : shadow
+  const text_color = tinycolor(color).isDark() ? tinycolor(color).brighten(50).toHexString() : tinycolor(color).darken(25).toHexString()
   return css`
     color: ${text_color};
     background-color: ${bg_color};
@@ -72,10 +71,11 @@ export const css_popbox = (color:string, thickness=2, only_hover=false) => {
     border-radius: ${thickness}px;
     margin-right: ${thickness-1}px;
     // box-sizing: border-box;
+    box-shadow: ${thickness}px ${thickness}px 2px rgba(0, 0, 0, 0.2);
 
     ${only_hover ? '&:hover' : '&'} {
-      box-shadow: ${new Array(thickness).fill(0).map((_, i) => `${i}px ${i}px ${shadow}`).join(', ')} ;
-      border-color: ${color};
+      box-shadow: ${thickness}px ${thickness}px 2px ${tinycolor(shadow_color).setAlpha(0.5).toRgbString()}; // ${boxShadow(shadow_color)} ;
+      // border-color: ${color};
     }
   `
 }
@@ -113,7 +113,7 @@ export const Button: FC<IButton> = ({ className, text, icon, color = "#212121", 
 (
   <button 
     className={cx(bss_button(), css(`
-      &:hover {
+      &:hover:enabled {
         &, > * {
           color: ${tinycolor(color).isDark() ? "#FAFAFA" : "#212121"}
         }
@@ -150,9 +150,10 @@ export const Input: FC<IInput> = ({
   onError,
   icon = "file",
   values,
+  defaultValue,
   ...props 
 }) => {
-  const [value, setValue] = useState<string[]>([].concat(props.defaultValue).filter(p => p))
+  const [value, setValue] = useState<string[]>([].concat(defaultValue).filter(p => p))
   
   return (
     <label
@@ -178,9 +179,8 @@ export const Input: FC<IInput> = ({
         <select
           className={cx(bss_input("select-input"), inputClassName)}
           {...(props as unknown as React.SelectHTMLAttributes<HTMLSelectElement>)}
-          defaultValue={null}
-          value={props.defaultValue || "_DEFAULT_"}
-          title={(title || props.defaultValue || "").toString()}
+          value={defaultValue || "_DEFAULT_"}
+          title={(title || defaultValue || "").toString()}
         >
           <option key="_default" value="_DEFAULT_" disabled hidden>{props.placeholder || "..."}</option>
           {values.map(v => {
@@ -192,6 +192,7 @@ export const Input: FC<IInput> = ({
         <input
           className={cx(bss_input("input"), inputClassName)}
           type={type}
+          defaultValue={defaultValue}
           {...props}
         />
       }
@@ -346,5 +347,21 @@ export const useWindowSize = () => {
 
   return size
 }
+
+export const ObjectGet = (obj:ObjectAny, ...args:string[]):any => {
+  while (obj != null && args.length > 0)
+    obj = obj[args.splice(0,1)[0]]
+  return args.length === 0 ? obj : null
+}
+
+// export const ObjectVerify = (obj:ObjectAny, other:ObjectAny) => 
+//   Object.keys(other)
+//     .forEach(k => {
+//       if (obj[k] && typeof other[k] === 'object')
+//         ObjectVerify(obj[k], other[k])
+//       else if (obj[k] == null) {
+//         obj[k] = Object.assign() other
+//       }
+//     })
 
 export { css, cx }
