@@ -36,6 +36,21 @@ export const useCanvasCtx = () => {
   const { data:{ tiles }, update:updateGlobal } = useGlobalCtx("canvas", { tiles:[] })
   const { data:{ maps, layers = {}, current_layer, current_map }, update } = useSaveCtx<CanvasCtx>("canvas")
 
+  const deleteTile = useCallback((key:string) => {
+    update({ 
+      maps:{ 
+        ...maps, 
+        [current_map]:{ 
+          ...maps[current_map], 
+          tiles: {
+            ...maps[current_map].tiles,
+            [current_layer]: maps[current_map].tiles[current_layer].filter(t => t.key !== key)
+          }
+        } 
+      } 
+    })
+  }, [tiles, maps, update, current_map, current_layer])
+
   const placeTile = useCallback((x:number, y:number) => {
     if (tiles && current_layer && current_map) {
       let minx:number, miny:number
@@ -183,7 +198,7 @@ export const useCanvasCtx = () => {
     setSelectedTiles, 
     addLayer, removeLayer, setLayer, updateLayer, setCurrentLayer, 
     addMap, removeMap, setMap, updateMap, setCurrentMap,
-    placeTile
+    placeTile, deleteTile
   }
 }
 
@@ -192,11 +207,12 @@ interface ITile {
   x:number, 
   y:number,
   tile:TileCropInfo,
+  disabled?:boolean,
   /** check the mouse button first! */
   onClick?:(e:PIXI.InteractionEvent) => void
 }
 
-const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, ...props }) => {
+const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, disabled, ...props }) => {
   const [texture, setTexture] = useState<PIXI.Texture<PIXI.Resource>>()
   const el_sprite = useRef<PIXI.Sprite>()
 
@@ -242,6 +258,7 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, .
       texture={texture}
       x={x}
       y={y}
+      interactive={!disabled}
       {...props}
     />
   ) : null
@@ -249,7 +266,7 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, .
 
 export const Canvas = () => {
   const [width, height] = useWindowSize()
-  const { layers, current_layer, maps, current_map, placeTile } = useCanvasCtx()
+  const { layers, current_layer, maps, current_map, placeTile, deleteTile } = useCanvasCtx()
 
   const drawGrid = useCallback(grid => {
     if (grid)
@@ -304,10 +321,10 @@ export const Canvas = () => {
             .map(id => (
               <Container key={id} alpha={current_layer === id ? 1 : 0.35}>
                 {current_map && maps[current_map].tiles[id].map(tile => (
-                  <Tile {...tile} onClick={e => {
+                  <Tile {...tile} disabled={current_layer !== id} onClick={e => {
                     // Right click
-                    if (e.data.buttons === 1) {
-                      console.log('ow', tile)
+                    if (e.data.buttons === 2) {
+                      deleteTile(tile.key)
                     }
                   }}/>
                 ))}
