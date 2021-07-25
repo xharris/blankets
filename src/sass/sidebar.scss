@@ -7,8 +7,12 @@
   flex-direction: column;
   justify-content: space-between;
   padding: $container-padding;
-  // box-sizing: border-box;
-
+  pointer-events: none;
+  
+  > * {
+    pointer-events: initial;
+  }
+  
   &__items {
     display: flex;
     flex-direction: column;

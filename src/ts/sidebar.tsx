@@ -98,6 +98,7 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
   const { isOpen } = useProject()
   const [itemsDirty, setItemsDirty] = useState(true)
   const { data:{ items }, update } = useSaveCtx<SidebarCtx>("sidebar", { items:[] })
+  const { saveHistory } = useProject()
 
   const sortItems = useCallback((itemlist: ItemOptions[]) => {
     if (sort) {
@@ -135,9 +136,10 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
       ...defaultItem[type_lower]
     }
     update({ items: [ ...items, new_item ] })
+    saveHistory()
     setItemsDirty(true)
     onItemAdd({...new_item})
-  }, [items, defaultItem, onItemAdd, update, setItemsDirty])
+  }, [items, defaultItem, onItemAdd, update, setItemsDirty, saveHistory])
 
   const showAddMenu = useCallback(() => {
     Electron.menu(types.map(type => ({
@@ -148,8 +150,9 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
 
   const updateItem = useCallback((id, data: ItemOptions) => {
     update({ items: items.map(i => id === i.id ? { ...i, ...data } : i) })
+    saveHistory()
     setItemsDirty(true)
-  }, [items, update, setItemsDirty])
+  }, [items, update, setItemsDirty, saveHistory])
 
   const setImages = useCallback((id, images: string | string[]) =>
     updateItem(id, { _images: [].concat(images) })
@@ -179,6 +182,8 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
               onItemDelete={() => {
                 onItemDelete(item.id)
                 update({ items:items.filter(i => i.id !== item.id) })
+                setItemsDirty(true)
+                saveHistory()
               }}
             >
               {ItemBody && <ItemBody {...item}

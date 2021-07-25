@@ -23,17 +23,74 @@ type AssetAction = {
 
 const defaultProject = {
   settings: {
-    auto_save: false
+    auto_save: false,
+    history_size: 10
   }
 }
 
 export const useProject = () => {
+  const { data:{ past, future }, update:updateHistory } = useGlobalCtx("history", {
+    past: [],
+    future: []
+  })
   const { data:{ path, loading, assets }, update } = useGlobalCtx("project", {
     path: null,
     loading: false,
     assets: { image:[], code:[], audio:[] }
   })
   const { all_data, data:savedata, load } = useSaveCtx("project", defaultProject)
+
+  // useEffect(() => {
+  //   console.log(all_data)
+  // }, [all_data])
+
+  const saveHistory = useCallback(() => {
+    updateHistory({
+      past: [
+        ...(past.length > savedata.settings.history_size ? past.splice(0,1) : past), 
+        { ...all_data }
+      ],
+      future: []
+    })
+  }, [past, updateHistory, savedata, all_data])
+
+  const resetHistory = useCallback(() => {
+    updateHistory({
+      past: [],
+      future: []
+    })
+  }, [updateHistory])
+
+  useEffect(() => {
+    const onkeydown = (e:KeyboardEvent) => {
+      const key = e.key.toLowerCase()
+      // undo
+      if (e.ctrlKey && key === 'z' && past.length > 0) {
+        load(past[past.length - 1])
+        updateHistory({ 
+          past: past.splice(0, past.length - 1),
+          future: [ ...future, { ...all_data } ]
+        })
+      }
+      // redo
+      if (e.ctrlKey && (key === 'y' || (e.shiftKey && key === 'z')) && future.length > 0) {
+        load(future[future.length - 1])
+        updateHistory({ 
+          past: [ 
+            ...(past.length > savedata.settings.history_size ? past.splice(0,1) : past), 
+            { ...all_data }
+          ],
+          future: future.splice(0, future.length - 1)
+        })
+      }
+    }
+
+    window.addEventListener('keydown', onkeydown)
+
+    return () => {
+      window.removeEventListener('keydown', onkeydown)
+    }
+  }, [past, future, update, load])
 
   const addAsset = useCallback((type:AssetAction["type"], path:string) => {
     if (ObjectGet(assets, type) && !assets[type].includes(path))
@@ -104,7 +161,8 @@ export const useProject = () => {
   const loadProject = useCallback((new_path, load_data) => {
     load({ ...defaultProject, ...load_data })
     update({ path:new_path, loading:false })
-  }, [load, update])
+    resetHistory()
+  }, [load, update, resetHistory])
 
   const openProjectDialog = useCallback(() => {
     // choose project location
@@ -140,6 +198,7 @@ export const useProject = () => {
     assets,
     loading,
     openProjectDialog,
-    saveProject
+    saveProject,
+    saveHistory
   }
 }

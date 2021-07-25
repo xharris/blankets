@@ -3,7 +3,8 @@ import { bem,  useWindowSize, ObjectAny, ObjectGet, FC } from "ts/ui"
 import { useGlobalCtx } from "ts/globalcontext"
 import * as PIXI from "pixi.js"
 import { Stage, Container, Graphics, Text, Sprite } from "@inlet/react-pixi"
-import { useSaveCtx } from "./savecontext"
+import { useSaveCtx } from "ts/savecontext"
+import { useProject } from "ts/project"
 // import { useProject } from "./project"
 
 type TileCropInfo = { path:string, x:number, y:number, w:number, h:number }
@@ -21,6 +22,10 @@ type Map = {
   tiles:ObjectAny<ITile[]>
 }
 
+type CanvasGlobalCtx = {
+  tiles: TileCropInfo[]
+}
+
 type CanvasCtx = { 
   /** currently selected tiles for placing */
   tiles:TileCropInfo[],
@@ -33,10 +38,12 @@ type CanvasCtx = {
 const bss = bem("canvas")
 
 export const useCanvasCtx = () => {
-  const { data:{ tiles }, update:updateGlobal } = useGlobalCtx("canvas", { tiles:[] })
+  const { saveHistory } = useProject()
+  const { data:{ tiles }, update:updateGlobal } = useGlobalCtx<CanvasGlobalCtx>("canvas", { tiles:[] })
   const { data:{ maps, layers = {}, current_layer, current_map }, update } = useSaveCtx<CanvasCtx>("canvas")
-
+  
   const deleteTile = useCallback((key:string) => {
+    let changed
     update({ 
       maps:{ 
         ...maps, 
@@ -44,15 +51,21 @@ export const useCanvasCtx = () => {
           ...maps[current_map], 
           tiles: {
             ...maps[current_map].tiles,
-            [current_layer]: maps[current_map].tiles[current_layer].filter(t => t.key !== key)
+            [current_layer]: maps[current_map].tiles[current_layer].filter(t => {
+              if (t.key === key)
+                changed = true
+              return t.key !== key
+            })
           }
         } 
       } 
     })
-  }, [tiles, maps, update, current_map, current_layer])
+    if (changed)
+      saveHistory()
+  }, [tiles, maps, update, current_map, current_layer, saveHistory])
 
   const placeTile = useCallback((x:number, y:number) => {
-    if (tiles && current_layer && current_map) {
+    if (tiles && tiles.length > 0 && current_layer && current_map) {
       let minx:number, miny:number
 
       // snap position
@@ -96,8 +109,9 @@ export const useCanvasCtx = () => {
           } 
         } 
       })
+      saveHistory()
     }
-  }, [current_layer, tiles, current_map, maps, update])
+  }, [current_layer, tiles, current_map, maps, update, saveHistory])
 
   const setSelectedTiles = useCallback((...args:TileCropInfo[]) => {
     updateGlobal({ tiles:args })
@@ -241,17 +255,6 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, d
     }
   }, [tile, setTexture])
 
-  const events = ['pointerover', 'pointerdown']
-  useEffect(() => {
-    if (el_sprite.current)
-      events.forEach(evt => el_sprite.current.on(evt, onClick))
-
-    return () => {
-      if (el_sprite.current)
-        events.forEach(evt => el_sprite.current.off(evt, onClick))
-    }
-  }, [el_sprite, onClick])
-
   return texture ? (
     <Sprite
       ref={el_sprite}
@@ -259,6 +262,8 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, d
       x={x}
       y={y}
       interactive={!disabled}
+      pointerover={onClick}
+      pointerdown={onClick}
       {...props}
     />
   ) : null
@@ -267,6 +272,7 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, d
 export const Canvas = () => {
   const [width, height] = useWindowSize()
   const { layers, current_layer, maps, current_map, placeTile, deleteTile } = useCanvasCtx()
+  const [_, setFocused] = useState(false)
 
   const drawGrid = useCallback(grid => {
     if (grid)
@@ -295,12 +301,17 @@ export const Canvas = () => {
     <div 
       className={bss()}
       onMouseDown={e => {
+        setFocused(true)
         if (e.buttons === 1)
           placeTile(e.clientX, e.clientY)
       }}
       onMouseOver={e => {
+        setFocused(true)
         if (e.buttons === 1)
           placeTile(e.clientX, e.clientY)
+      }}
+      onMouseOut={() => {
+        setFocused(false)
       }}
     >
       <Stage 
@@ -321,12 +332,16 @@ export const Canvas = () => {
             .map(id => (
               <Container key={id} alpha={current_layer === id ? 1 : 0.35}>
                 {current_map && maps[current_map].tiles[id].map(tile => (
-                  <Tile {...tile} disabled={current_layer !== id} onClick={e => {
-                    // Right click
-                    if (e.data.buttons === 2) {
-                      deleteTile(tile.key)
+                  <Tile 
+                    {...tile} 
+                    disabled={current_layer !== id} 
+                    onClick={e => {
+                      // Right click
+                      if (e.data.buttons === 2) {
+                        deleteTile(tile.key)
+                      }
                     }
-                  }}/>
+                  }/>
                 ))}
               </Container>
             ))}
