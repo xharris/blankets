@@ -11,7 +11,7 @@ interface IGlobalCtx<T> {
 type GlobalCtxAction = {
   type: "update" | "set" | "load",
   category?: string,
-  data: ObjectAny
+  data: ObjectAny | ((prev:ObjectAny) => any)
 }
 
 type ICreateCtx = () => [FC<React.Provider<IGlobalCtx<any>>>, IUseGlobalCtx]
@@ -19,7 +19,7 @@ type IUseGlobalCtx = <T>(category?:string, defaultValue?:T) => {
   all_data?: ObjectAny,
   data: T,
   set: (data:T) => void,
-  update: (data:Partial<T>) => void,
+  update: (data:Partial<T>|((prev:T) => any)) => void,
   load: (data:Partial<T>) => void
 }
 
@@ -35,7 +35,9 @@ export const createCtx: ICreateCtx = () => {
     const reducer: Reducer<ObjectAny, GlobalCtxAction> = (state, action) => {
       switch (action.type) {
         case "update":
-          return { ...state, [action.category]:{  ...state[action.category], ...action.data } }
+          return { ...state, [action.category]:{  ...state[action.category], ...(
+            typeof action.data === "function" ? action.data(state[action.category]) : action.data
+          ) } }
         case "set":
           return { ...state, [action.category]:action.data }
         case "load":

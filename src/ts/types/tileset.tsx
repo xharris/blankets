@@ -30,8 +30,6 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
 
     let new_tile_count = Math.ceil((new_size[0] / size.w) * (new_size[1] / size.h))
     setTileCount(!isFinite(new_tile_count) ? 0 : new_tile_count)
-
-    console.log(new_size, new_tile_count)
   }, [imageSize, crop, setCroppedImageSize, size])
 
   useEffect(() => {
@@ -66,7 +64,6 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
   }, [setSelectedTiles, selectedTiles, image, selectItem, id])
 
   useEffect(() => {
-    console.log(id, image, size)
     if (image) {
       setImages(id, image)
       setSelectedTiles({})

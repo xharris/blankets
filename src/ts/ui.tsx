@@ -370,7 +370,10 @@ export const ObjectGet = (obj:ObjectAny, ...args:string[]):any => {
 //     })
 
 export const useEvent = (type:string|string[], listener:any, deps?:DependencyList, object:EventTarget = window) => {
-  const callback = useCallback(listener, deps)
+  
+  const callback = useCallback((...args:any[]) => {
+    requestAnimationFrame(listener.bind(undefined, ...args))
+  }, [listener, ...deps])
   const types = [].concat(type)
 
   useEffect(() => {
