@@ -1,7 +1,6 @@
 // import { useCallback, useEffect, useState } from "react"
 import { bem, Form } from "ts/ui"
 import { FCItemBody, IItemBody } from "ts/sidebar"
-import { useCanvasCtx } from "ts/canvas"
 
 const bss = bem("layer")
 
@@ -11,8 +10,6 @@ interface LayerBody extends IItemBody {
 }
 
 export const Layer: FCItemBody<LayerBody> = ({ id, name, z, snap, offset, updateItem }) => {
-  const { updateLayer } = useCanvasCtx()
-
   return (
     <div className={bss()}>
       <Form 
@@ -27,17 +24,14 @@ export const Layer: FCItemBody<LayerBody> = ({ id, name, z, snap, offset, update
             case "z":
               new_val = { z: e.target.valueAsNumber || 0 }
               updateItem(id, new_val)
-              updateLayer(id, new_val)
               break
             case "snap": 
               new_val = { snap: { ...snap, [subname]: e.target.valueAsNumber || 0 } }
               updateItem(id, new_val)
-              updateLayer(id, new_val)
               break
             case "offset":
               new_val = { offset: { ...offset, [subname]: e.target.valueAsNumber || 0 } }
               updateItem(id, new_val)
-              updateLayer(id, new_val)
               break
           }
         }}

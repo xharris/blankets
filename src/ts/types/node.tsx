@@ -3,17 +3,29 @@ import { FCItemBody } from "ts/sidebar"
 
 const bss = bem("node")
 
-export const Node: FCItemBody = ({ id, name, updateItem }) => {
+export const Node: FCItemBody = ({ id, name, connect_type, updateItem }) => {
 
   return (
     <div className={bss()}>
       <Form 
-        defaultValue={{ name }}
-        order={["name"]}
+        defaultValue={{ name, connect_type }}
+        order={["name", "connect_type"]}
+        options={{
+          connect_type: {
+            label: "Type",
+            type: "select",
+            defaultValue: connect_type || "none",
+            values: [
+              ['none', "none"], 
+              ['path', "path"], 
+              ['graph', "graph"]
+            ]
+          }
+        }}
         onChange={(e, name) => {
           switch(name) {
-            case "name":
-              updateItem(id, { name: e.target.value })
+            default:
+              updateItem( id, { [name]: e.target.value } )
           }
         }}
       />

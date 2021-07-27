@@ -1,9 +1,10 @@
 import { MouseEvent, useCallback, useEffect, useState } from "react"
-import { FC, HTMLDiv, cx, css, bem, Button, Icon, Electron, useTheme, capitalize, css_popbox } from "ts/ui"
+import { FC, HTMLDiv, cx, css, bem, Button, Icon, Electron, useTheme, capitalize, css_popbox, ObjectAny, ValueOf } from "ts/ui"
 import { nanoid } from 'nanoid'
 import tinycolor from "tinycolor2"
 import { useProject } from "ts/project"
 import { useSaveCtx } from "ts/savecontext"
+import { useGlobalCtx } from "./globalcontext"
 
 export type ItemOptions = {
   id?: string,
@@ -73,7 +74,9 @@ const Item: FC<IItem> = ({ className, id, name, type, isChild, children, _images
           ))}
         </div>}
       </div>
-      {expanded ? children : null}
+      <div className={bss("item-children", { hidden:!expanded })}>
+        {children}
+      </div>
     </div>
   )
 }
@@ -91,38 +94,69 @@ type SidebarCtx = {
   items: ItemOptions[]
 }
 
+type SidebarGlobalCtx = {
+  selectedItem: ItemOptions
+}
+
+export const useSidebarCtx = () => {
+  const { data:{ selectedItem }, update } = useGlobalCtx<SidebarGlobalCtx>("sidebar", { selectedItem:null })
+  const props = useSaveCtx<SidebarCtx>("sidebar", { items:[] })
+  const { data:{ items } } = props
+
+  const getItem = useCallback((id:string) => 
+    items.find(item => item.id === id)
+  ,[items])
+
+  const getItems = useCallback((type:string) =>
+    items.filter(item => item.type === type)
+  ,[items])
+
+  const selectItem = useCallback((id:string) =>
+    update({
+      selectedItem: items.find(item => item.id === id)
+    })
+  ,[update, items])
+
+  return {
+    ...props,
+    selectedItem,
+    selectItem,
+    getItem,
+    getItems
+  }
+}
+
 export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onItemAdd, onItemDelete, ...props }: ISidebar) => {
   const theme = useTheme()
-  const [types, setTypes] = useState<string[]>([])
   // const [items, setItems] = useState<ItemOptions[]>([])
-  const { isOpen } = useProject()
+  const { isOpen, loading } = useProject()
   const [itemsDirty, setItemsDirty] = useState(true)
-  const { data:{ items }, update } = useSaveCtx<SidebarCtx>("sidebar", { items:[] })
+  const { data:{ items }, update, selectItem } = useSidebarCtx()
   const { saveHistory } = useProject()
+  const types = Object.keys(theme.color.type)
 
   const sortItems = useCallback((itemlist: ItemOptions[]) => {
     if (sort) {
-      types.forEach(type => {
-        const key = sort[type] || "name"
-        // use custom function sort
-        if (typeof key === "function")
-          itemlist.sort(key)
-        else
-          itemlist.sort((a, b) => {
-            // use custom key sort
-            if (a.type === b.type && a.type === type)
-              return a[key] - b[key]
-            // keep different types together
-            if (a.type.toLowerCase() < b.type.toLowerCase())
-              return -1 
-            if (a.type.toLowerCase() > b.type.toLowerCase())
-              return 1 
-            return 0
-          })
+      const sort_keys:ObjectAny<ValueOf<typeof sort>> = {}
+      types.forEach(type => { sort_keys[type] = sort[type] || "name" })
+      itemlist.sort((a, b) => {
+        const key = sort_keys[a.type]
+        // use custom key sort
+        if (a.type === b.type) {
+          if (typeof key === "function")
+            return key(a, b)
+          return a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0
+        }
+        // keep different types together
+        if (a.type.toLowerCase() < b.type.toLowerCase())
+          return -1 
+        if (a.type.toLowerCase() > b.type.toLowerCase())
+          return 1 
+        return 0
       })
     }
     return itemlist
-  }, [sort])
+  }, [sort, types])
 
   const addItem = useCallback((opts: ItemOptions) => {
     const type_lower = opts.type.toLowerCase()
@@ -138,12 +172,13 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
     update({ items: [ ...items, new_item ] })
     saveHistory()
     setItemsDirty(true)
-    onItemAdd({...new_item})
+    if (onItemAdd)
+      onItemAdd({...new_item})
   }, [items, defaultItem, onItemAdd, update, setItemsDirty, saveHistory])
 
   const showAddMenu = useCallback(() => {
     Electron.menu(types.map(type => ({
-      label: type,
+      label: capitalize(type),
       click: () => addItem({ type })
     })))
   }, [types, addItem])
@@ -159,15 +194,15 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
     , [updateItem])
 
   useEffect(() => {
-    if (itemsDirty && isOpen) {
+    if (itemsDirty && !loading) {
       update({ items: sortItems(items) })    
       setItemsDirty(false)
     }
-  }, [items, sortItems, update, setItemsDirty, itemsDirty, isOpen])
+  }, [items, sortItems, update, setItemsDirty, itemsDirty, isOpen, loading])
 
   useEffect(() => {
-    setTypes(Object.keys(theme.color.type).map(capitalize))
-  }, [theme])
+    setItemsDirty(true)
+  }, [setItemsDirty, loading])
 
   return (
     <div className={cx(bss(), className)} {...props}>
@@ -178,9 +213,13 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
             <Item
               {...item}
               key={item.id}
-              onItemClick={onItemClick}
+              onItemClick={(e, item) => {
+                if (onItemClick) onItemClick(e, item)
+                selectItem(item.id)
+              }}
               onItemDelete={() => {
-                onItemDelete(item.id)
+                if (onItemDelete)
+                  onItemDelete(item.id)
                 update({ items:items.filter(i => i.id !== item.id) })
                 setItemsDirty(true)
                 saveHistory()

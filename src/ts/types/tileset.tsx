@@ -1,5 +1,5 @@
 import { bem, cx, css, css_popbox, Button, Form, ObjectAny } from "ts/ui"
-import { FCItemBody } from "ts/sidebar"
+import { FCItemBody, useSidebarCtx } from "ts/sidebar"
 import { useCallback, useEffect, useState } from "react"
 import TileBgImage from "./tilebg.png"
 import { useProject } from "ts/project"
@@ -12,20 +12,35 @@ const bss = bem("tileset")
 export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, setImages }) => {
   // const { data:{ opened }, update } = useGlobalCtx("tileset")
   const [imageSize, setImageSize] = useState([0,0])
+  const [croppedImageSize, setCroppedImageSize] = useState([0,0])
+  const [tileCount, setTileCount] = useState(0)
   const [selectedTiles, setSelectedTiles] = useState<ObjectAny<number>>({})
   const [zoom, setZoom] = useState<number>(1)
   const { assets } = useProject() // HELP: assets are empty
   const canvas = useCanvasCtx()
+  const { selectItem } = useSidebarCtx()
 
-  let croppedImageSize = [imageSize[0] - (crop.x || 0), imageSize[1] - (crop.y || 0)]
-  if (crop.w)
-    croppedImageSize[0] = crop.w
-  if (crop.h)
-    croppedImageSize[1] = crop.h
+  useEffect(() => {
+    let new_size = [imageSize[0] - (crop.x || 0), imageSize[1] - (crop.y || 0)]
+    if (crop.w)
+      new_size[0] = crop.w
+    if (crop.h)
+      new_size[1] = crop.h
+    setCroppedImageSize(new_size)
 
-  let tile_count = Math.ceil((croppedImageSize[0] / size.w) * (croppedImageSize[1] / size.h))
-  if (!isFinite(tile_count))
-    tile_count = 0
+    let new_tile_count = Math.ceil((new_size[0] / size.w) * (new_size[1] / size.h))
+    setTileCount(!isFinite(new_tile_count) ? 0 : new_tile_count)
+
+    console.log(new_size, new_tile_count)
+  }, [imageSize, crop, setCroppedImageSize, size])
+
+  useEffect(() => {
+    let img = new Image()
+    img.src = `file://${image}`
+    img.onload = () => {
+      setImageSize([img.width, img.height])
+    }
+  }, [image])
 
   useEffect(() => {
     let cols = Math.floor(croppedImageSize[0] / size.w)
@@ -47,9 +62,11 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
       ...selectedTiles,
       [idx]: v
     })
-  }, [setSelectedTiles, selectedTiles, image])
+    selectItem(id)
+  }, [setSelectedTiles, selectedTiles, image, selectItem, id])
 
   useEffect(() => {
+    console.log(id, image, size)
     if (image) {
       setImages(id, image)
       setSelectedTiles({})
@@ -91,7 +108,7 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
 
                   // transform: scale(${zoom});
                 `)}>
-                  {new Array(tile_count).fill(0).map((_, idx) => (
+                  {new Array(tileCount).fill(0).map((_, idx) => (
                     <div 
                       key={`tile-${idx}`}
                       className={cx(bss("tile", { selected: !!selectedTiles[idx] }), css`
@@ -113,7 +130,6 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
                 `)}>
                   <img
                     src={`file://${image}`} 
-                    onLoad={e => { setImageSize([e.currentTarget.clientWidth, e.currentTarget.clientHeight]) }}
                   />
                 </div>
               </div>

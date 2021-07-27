@@ -6,9 +6,8 @@ import { Layer } from "ts/types/layer"
 import { Map } from "ts/types/map"
 import { Node } from "ts/types/node"
 import { Canvas } from "ts/canvas"
-import { GlobalCtxProvider } from 'ts/globalcontext';
-import { SaveCtxProvider } from 'ts/savecontext';
-import { useCanvasCtx } from "ts/canvas"
+import { GlobalCtxProvider } from 'ts/globalcontext'
+import { SaveCtxProvider } from 'ts/savecontext'
 
 import './App.css';
 import "sass/index.scss";
@@ -46,8 +45,6 @@ const App = () => {
 
 
 const AppBody = () => {
-  const { addLayer, removeLayer, setCurrentLayer, addMap, removeMap, setCurrentMap } = useCanvasCtx()
-
   return (
     <div className="App">
       <Nav />
@@ -62,32 +59,19 @@ const AppBody = () => {
             size: {/* w, h */},
             crop: {/* x, y, w, h */},
             margin: {/* x, y */}
+          },
+          node: {
+            connect_type: "none"
           }
         }}
-        sort={{ layer: 'z' }}
+        sort={{ 
+          layer: 'z'
+        }}
         body={{
           layer: Layer,
           tileset: Tileset,
           map: Map,
           node: Node
-        }}
-        onItemClick={(e, item) => {
-          if (item.type === "layer")
-            setCurrentLayer(item.id)
-          if (item.type === "map")
-            setCurrentMap(item.id)
-        }}
-        onItemAdd={item => {
-          if (item.type === "layer")
-            addLayer(item.id, item)
-          if (item.type === "map")
-            addMap(item.id, item)
-        }}
-        onItemDelete={item => {
-          if (item.type === "layer")
-            removeLayer(item.id)
-          if (item.type === "map")
-            removeMap(item.id)
         }}
       />
       <Canvas />

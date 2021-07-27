@@ -4,7 +4,8 @@ import { basename, join } from "path"
 import { useCallback, useEffect } from "react"
 import { watch } from "chokidar"
 import { FSWatcher, pathExists, readFile, Stats, writeFile } from "fs-extra"
-import { useSaveCtx } from "./savecontext"
+import { useSaveCtx } from "ts/savecontext"
+import { useUndo } from "ts/undo"
 
 const EXTENSIONS = {
   image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
@@ -29,68 +30,13 @@ const defaultProject = {
 }
 
 export const useProject = () => {
-  const { data:{ past, future }, update:updateHistory } = useGlobalCtx("history", {
-    past: [],
-    future: []
-  })
   const { data:{ path, loading, assets }, update } = useGlobalCtx("project", {
     path: null,
     loading: false,
     assets: { image:[], code:[], audio:[] }
   })
   const { all_data, data:savedata, load } = useSaveCtx("project", defaultProject)
-
-  // useEffect(() => {
-  //   console.log(all_data)
-  // }, [all_data])
-
-  const saveHistory = useCallback(() => {
-    updateHistory({
-      past: [
-        ...(past.length > savedata.settings.history_size ? past.splice(0,1) : past), 
-        { ...all_data }
-      ],
-      future: []
-    })
-  }, [past, updateHistory, savedata, all_data])
-
-  const resetHistory = useCallback(() => {
-    updateHistory({
-      past: [],
-      future: []
-    })
-  }, [updateHistory])
-
-  useEffect(() => {
-    const onkeydown = (e:KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-      // undo
-      if (e.ctrlKey && key === 'z' && past.length > 0) {
-        load(past[past.length - 1])
-        updateHistory({ 
-          past: past.splice(0, past.length - 1),
-          future: [ ...future, { ...all_data } ]
-        })
-      }
-      // redo
-      if (e.ctrlKey && (key === 'y' || (e.shiftKey && key === 'z')) && future.length > 0) {
-        load(future[future.length - 1])
-        updateHistory({ 
-          past: [ 
-            ...(past.length > savedata.settings.history_size ? past.splice(0,1) : past), 
-            { ...all_data }
-          ],
-          future: future.splice(0, future.length - 1)
-        })
-      }
-    }
-
-    window.addEventListener('keydown', onkeydown)
-
-    return () => {
-      window.removeEventListener('keydown', onkeydown)
-    }
-  }, [past, future, update, load])
+  const { saveHistory, resetHistory } = useUndo(all_data, load, { size: savedata.settings.history_size })
 
   const addAsset = useCallback((type:AssetAction["type"], path:string) => {
     if (ObjectGet(assets, type) && !assets[type].includes(path))
@@ -183,6 +129,8 @@ export const useProject = () => {
           })
           // load blanke.json
           .then(load_data => loadProject(new_path, load_data))
+      } else {
+        update({ path:null, loading:false })
       }
     })
     .catch(() => {

@@ -1,7 +1,7 @@
 import { css, cx } from "@emotion/css"
 import * as FIcon from "react-feather"
-import { dialog, Menu } from "@electron/remote"
-import React, { FunctionComponent, HTMLAttributes, createContext, useContext, InputHTMLAttributes, FormHTMLAttributes, useState, useEffect } from "react"
+import { dialog, Menu, getCurrentWindow } from "@electron/remote"
+import React, { FunctionComponent, HTMLAttributes, createContext, useContext, InputHTMLAttributes, FormHTMLAttributes, useState, useEffect, DependencyList, useCallback, useLayoutEffect } from "react"
 import tinycolor from "tinycolor2"
 import { basename } from "path"
 
@@ -14,7 +14,7 @@ interface IThemeProps {
   color: {
     fg: string,
     bg: string,
-    type: { [key: string]: string; }
+    type: ObjectAny<string>
   }
 }
 
@@ -315,7 +315,12 @@ export class Electron {
       ...options
     })
   }
+
+  static openDevTools() {
+    getCurrentWindow().webContents.openDevTools()
+  }
 }
+
 
 // Util
 
@@ -363,5 +368,30 @@ export const ObjectGet = (obj:ObjectAny, ...args:string[]):any => {
 //         obj[k] = Object.assign() other
 //       }
 //     })
+
+export const useEvent = (type:string|string[], listener:any, deps?:DependencyList, object:EventTarget = window) => {
+  const callback = useCallback(listener, deps)
+  const types = [].concat(type)
+
+  useEffect(() => {
+    types.forEach(type => object.addEventListener(type, callback))
+    return () => {
+      types.forEach(type =>   object.removeEventListener(type, callback))
+    }
+  }, [callback])
+}
+
+export const useLayoutEvent = (type:string|string[], listener:any, deps?:DependencyList, object:EventTarget = window) => {
+  const callback = useCallback(listener, deps)
+  const types = [].concat(type)
+
+  useLayoutEffect(() => {
+    types.forEach(type => object.addEventListener(type, callback))
+    return () => {
+      types.forEach(type =>   object.removeEventListener(type, callback))
+    }
+  }, [callback])
+}
+
 
 export { css, cx }

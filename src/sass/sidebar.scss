@@ -71,4 +71,12 @@
   &__item--expanded &__images {
     display: none;
   }
+
+  &__item-children--hidden {
+    margin: 0px;
+    padding: 0px;
+    width: 0px;
+    height: 0px;
+    overflow: hidden;
+  }
 }

@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@electron/remote"
-import { bem, Button } from "ts/ui"
+import { bem, Button, Electron } from "ts/ui"
 import { useProject } from "ts/project"
 
 const bss = bem("nav")
@@ -28,6 +28,7 @@ export const Nav = () => {
         />
       </div>
       <div className={bss("win-buttons", { reverse: process.platform === "darwin" })}>
+        <Button className={bss("max")} icon="code" onClick={() => Electron.openDevTools()} />
         <Button className={bss("min")} icon="minus" />
         <Button className={bss("max")} icon="square" />
         <Button className={bss("close")} icon="x" color="#F44336" 
