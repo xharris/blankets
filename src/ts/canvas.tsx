@@ -27,7 +27,8 @@ type CanvasGlobalCtx = {
   tiles: TileCropInfo[],
   node_parts: Point[],
   camera: ObjectAny<Point>,
-  selectedNode: string
+  selectedNode: string,
+  draggingNode: boolean
 }
 
 type CanvasCtx = { 
@@ -59,11 +60,12 @@ const bss = bem("canvas")
 
 export const useCanvasCtx = () => {
   const { saveHistory } = useProject()
-  const { data:{ tiles, node_parts, camera, selectedNode }, update:updateGlobal } = useGlobalCtx<CanvasGlobalCtx>("canvas", { 
+  const { data:{ tiles, node_parts, camera, selectedNode, draggingNode }, update:updateGlobal } = useGlobalCtx<CanvasGlobalCtx>("canvas", { 
     tiles:[], 
     node_parts:[],
     camera:{},
-    selectedNode: null
+    selectedNode: "",
+    draggingNode: false,
   })
   const { data:{ maps = {}, current_layer, current_map }, update } = useSaveCtx<CanvasCtx>("canvas")
   const { selectedItem, getItem, getItems } = useSidebarCtx()
@@ -83,11 +85,17 @@ export const useCanvasCtx = () => {
     })
   }, [update, maps])
 
-  const selectMapNode = useCallback((key:string|null) => {
+  const setDraggingNode = useCallback((v:boolean) => 
     updateGlobal({
-      selectedNode: key || ""
+      draggingNode: v
     })
-  }, [updateGlobal])
+  , [updateGlobal])
+
+  const selectMapNode = useCallback((key:string = "", set?:boolean) => {
+    updateGlobal({
+      selectedNode: selectedNode === key && !set ? null : key
+    })
+  }, [updateGlobal, selectedNode])
 
   const deleteTile = useCallback((id:string, key:string) => {
     let changed
@@ -154,7 +162,7 @@ export const useCanvasCtx = () => {
     if (node_parts.length > 0) {
       updateMap(current_map, current_layer, "nodes",
         [
-          ...(ObjectGet(maps, current_map, "nodes", current_layer) || []),
+          ...(ObjectGet<INode[]>(maps, current_map, "nodes", current_layer) || []),
           {
             key:nanoid(),
             id:selectedItem.id,
@@ -167,16 +175,48 @@ export const useCanvasCtx = () => {
       })
       saveHistory()
     }
-  }, [selectedItem, getItem, node_parts, maps, updateMap, updateGlobal, saveHistory])
+  }, [
+    selectedItem, getItem, node_parts, maps, updateMap,
+    updateGlobal, saveHistory, current_map, current_layer
+  ])
 
   const resetNodePath = useCallback(() => {
     updateGlobal({
       node_parts: []
     })
   }, [updateGlobal])
+  
+  const getNode = useCallback((key:string, map:string, layer:string) => 
+    maps[map].nodes[layer].find(node => node.key === key)
+  , [maps])
+
+  const updateNode = useCallback((node:INode|string, data:Partial<INode>) => {
+    if (typeof node === "string")
+      node = getNode(node, current_map, current_layer)
+    updateMap(current_map, current_layer, "nodes",
+      [
+        ...(ObjectGet<INode[]>(maps, current_map, "nodes", current_layer) || []).filter(n => n.key !== (node as INode).key),
+        {
+          ...node,
+          ...data
+        }
+      ]
+    )
+  }, [updateMap, current_map, current_layer, maps, getNode])
 
   const onPlace = useCallback((x:number, y:number) => {
-    if (selectedItem) {
+    if (selectedNode) {
+      // add vertex to node path
+      const node = getNode(selectedNode, current_map, current_layer)
+      updateNode(node, {
+        ...node,
+        node: {
+          ...node.node,
+          points: node.node.points.concat({x,y})
+        }
+      })
+      saveHistory()
+    } else if (selectedItem) {
       if (selectedItem.type === "tileset")
         placeTile(x, y)
       if (selectedItem.type === "node") {
@@ -186,7 +226,11 @@ export const useCanvasCtx = () => {
       }
       saveHistory()
     }
-  }, [placeTile, updateGlobal, node_parts, finishNode, selectedItem, saveHistory])
+  }, [
+    placeTile, updateGlobal, node_parts, finishNode, 
+    selectedNode, selectedItem, saveHistory,
+    current_map, current_layer, getNode, updateNode
+  ])
 
   const setSelectedTiles = useCallback((...args:TileCropInfo[]) => {
     updateGlobal({ tiles:args })
@@ -258,7 +302,7 @@ export const useCanvasCtx = () => {
 
   const deleteNode = useCallback((key:string) => {
     updateMap(current_map, current_layer, "nodes", 
-      ObjectGet(maps, current_map, "nodes", current_layer).filter((n:INode) => n.key !== key)
+      ObjectGet<INode[]>(maps, current_map, "nodes", current_layer).filter((n:INode) => n.key !== key)
     )
     saveHistory()
   }, [updateMap, current_layer, current_map, saveHistory])
@@ -281,7 +325,7 @@ export const useCanvasCtx = () => {
       node.node.edges = node.node.edges.filter(edge => !sameEdge(edge, [edge[0], point]) && !sameEdge(edge, [edge[1], point]))
       updateMap(current_map, current_layer, "nodes",
         [
-          ...ObjectGet(maps, current_map, "nodes", current_layer).filter((n:INode) => n.key !== node.key),
+          ...ObjectGet<INode[]>(maps, current_map, "nodes", current_layer).filter((n:INode) => n.key !== node.key),
           node
         ]
       )
@@ -301,7 +345,7 @@ export const useCanvasCtx = () => {
     }
     updateMap(current_map, current_layer, "nodes", 
       [
-        ...ObjectGet(maps, current_map, "nodes", current_layer).filter((n:INode) => n.key !== node.key),
+        ...ObjectGet<INode[]>(maps, current_map, "nodes", current_layer).filter((n:INode) => n.key !== node.key),
         node
       ]
     )
@@ -351,14 +395,16 @@ export const useCanvasCtx = () => {
     camera: camera[current_map] || { x:0, y:0 },
     node_parts,
     selectedNode,
+    draggingNode,
     onPlace,
     setCamera,
     setSelectedTiles, 
+    setDraggingNode,
     addLayer, removeLayer, 
     addMap, removeMap, 
     deleteTile, deleteNode, deleteNodePoint,
     finishNode, resetNodePath, toggleNodeEdge,
-    selectMapNode
+    selectMapNode, updateNode, getNode
   }
 }
 
@@ -441,7 +487,6 @@ const NodeEdge:FC<INodeEdge & ComponentProps<typeof Graphics>> = ({ start, end, 
   const [hitArea, setHitArea] = useState<PIXI.Polygon>(null)
   const theme = useTheme()
 
-
   useEffect(() => {
     const m = -5
     const { x:x1, y:y1 } = start 
@@ -494,6 +539,8 @@ const NodeEdge:FC<INodeEdge & ComponentProps<typeof Graphics>> = ({ start, end, 
 }
 
 interface INode extends ICanvasElement {
+  canvas:ReturnType<typeof useCanvasCtx>,
+  sidebar:ReturnType<typeof useSidebarCtx>,
   editing:boolean,
   incomplete?:boolean,
   node:NodeInfo,
@@ -503,13 +550,57 @@ interface INode extends ICanvasElement {
   onPointDelete:(idx:number) => void,
 }
 
-const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, id, item, node, selected, size=3, incomplete, editing, onPointDelete, onEdgeClick, onDelete, ...props }) => {
+const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, sidebar, id, item, node, selected, size=3, incomplete, editing, onPointDelete, onEdgeClick, onDelete, ...props }) => {
   const [edges, setEdges] = useState<Edge[]>([])
   const theme = useTheme()
   const { points, edges:nodeEdges } = node
-  const { selectedNode, selectMapNode } = canvas
+  const { getItem, selectItem } = sidebar
+  const { 
+    camera, current_layer, selectedNode,  
+    selectMapNode, updateNode, setDraggingNode 
+  } = canvas
+  const [dragging, setDragging] = useState(-1)
   
+  const extra_hit = size < 10 ? 10 : size
+  const can_select_map_node = item.connect_type !== "none"
+  const layer = getItem(current_layer)
+
+  // TODO: efficiency needed? only updateNode on mouseup
+  useEvent("mousemove", (e:MouseEvent) => {
+    if (dragging > -1 && layer) {
+      const [x,y] = [e.clientX - camera.x, e.clientY - camera.y]
+      const new_pos = layer ? {
+        x: x - (x % layer.snap.x),
+        y: y - (y % layer.snap.y)
+      } : {
+        x, y
+      }
+      
+      updateNode(canvasKey, {
+        node: {
+          ...node,
+          points: points.map((pt, i) => {
+            if (i === dragging) {
+              return {
+                x: new_pos.x,
+                y: new_pos.y
+              }
+            }
+            return pt
+          })
+        }
+      })
+    }
+  }, [dragging, updateNode, layer, canvasKey, points])
+
+  useEvent("mouseup", () => {
+    setDraggingNode(false)
+    setDragging(-1)
+  }, [setDragging, setDraggingNode])
+
   useEffect(() => {
+    // TODO: does not update edges when points are deleted
+    // console.log(points.length)
     if (item.connect_type === "graph") {
       let new_edges:Edge[] = []
       points.forEach((pt) => {
@@ -530,15 +621,12 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
     const color = parseInt(theme.color.type.node, 16)
     g.lineStyle({ ...lineStyle, width: 2, color })
     // vertex
-    if (!incomplete)
+    if (!(incomplete || selectedNode === canvasKey))
       g.beginFill(color, 0.25)
     g.drawRect(0, 0, size, size)
-    if (!incomplete)
+    if (!(incomplete || selectedNode === canvasKey))
       g.endFill()
-  }, [item, theme, incomplete, size])
-
-  const extra_hit = size < 10 ? 10 : size
-  const can_select_map_node = item.connect_type !== "none" && selected
+  }, [item, theme, incomplete, size, selectedNode, canvasKey])
 
   return (
     <Container
@@ -547,37 +635,59 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
     >
       {item.connect_type === "path" && points.map((pt, i) => i > 0 ? (
         <NodeEdge
-          key={edgeKey([points[i-1], pt])}
+          key={`${edgeKey([points[i-1], pt])},${i}`}
           start={points[i-1]}
           end={pt}
-          onClick={e => onEdgeClick(points[i-1], pt, e)}
+          onClick={e => {
+            onEdgeClick(points[i-1], pt, e)
+            // add node to middle of edge
+            if (item.connect_type === "path" && selectedNode === canvasKey && dragging === -1 && layer) {
+              let [x, y] = [
+                (points[i-1].x + pt.x) / 2,
+                (points[i-1].y + pt.y) / 2
+              ]
+              x = x - (x % layer.snap.x)
+              y = y - (y % layer.snap.y)
+              if (!points.find(pt2 => pt2.x === x && pt2.y === y)) {
+                points.splice(i, 0, { x, y })
+                updateNode(canvasKey, {
+                  node: {
+                    ...node,
+                    points 
+                  }
+                })
+              }
+            }
+          }}
           active={true}
           editing={false}
         />
       ) : null)}
-      {editing && selected ? edges.map(edge => (
-        <NodeEdge 
-          key={edgeKey(edge)} 
-          start={{ x:edge[0].x, y:edge[0].y }}
-          end={{ x:edge[1].x, y:edge[1].y }}
-          onClick={e => onEdgeClick(edge[0], edge[1], e)}
-          active={nodeEdges.some(edge2 => sameEdge(edge2, edge))}
-          editing={editing}
-        />
-      ))
-      : nodeEdges.map(edge => (
-        <NodeEdge 
-          key={edgeKey(edge)} 
-          start={{ x:edge[0].x, y:edge[0].y }}
-          end={{ x:edge[1].x, y:edge[1].y }}
-          onClick={e => editing ? onEdgeClick(edge[0], edge[1], e) : null}
-          active={true}
-          editing={editing}
-        />
-      ))}
+      {item.connect_type === "graph" && (
+        editing && selected ? edges.map(edge => (
+          <NodeEdge 
+            key={edgeKey(edge)} 
+            start={{ x:edge[0].x, y:edge[0].y }}
+            end={{ x:edge[1].x, y:edge[1].y }}
+            onClick={e => onEdgeClick(edge[0], edge[1], e)}
+            active={nodeEdges.some(edge2 => sameEdge(edge2, edge))}
+            editing={editing}
+          />
+        ))
+        : nodeEdges.map(edge => (
+          <NodeEdge 
+            key={edgeKey(edge)} 
+            start={{ x:edge[0].x, y:edge[0].y }}
+            end={{ x:edge[1].x, y:edge[1].y }}
+            onClick={e => editing ? onEdgeClick(edge[0], edge[1], e) : null}
+            active={true}
+            editing={editing}
+          />
+        ))
+      )}
       {points.map((point, i) => (
         <Graphics
-          key={`${point.x},${point.y}`}
+          key={`${point.x},${point.y},${i}`}
           x={point.x - (size/2)}
           y={point.y - (size/2)}
           interactive={true}
@@ -591,6 +701,11 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
             }
             if (e.data.originalEvent.ctrlKey && e.data.button === 0 && can_select_map_node) {
               selectMapNode(canvasKey)
+              selectItem(id, true)
+            }
+            if (e.data.button === 0) {
+              setDraggingNode(true)
+              setDragging(i)
             }
           }}
           draw={drawPoint}
@@ -599,12 +714,10 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
       {points.length > 0 && (
         <BitmapText
           x={points[0].x}
-          y={points[0].y - size}
+          y={points[0].y - (size/2) - 4}
           text={selectedNode === canvasKey ? `[${item.name}]` : item.name}
           style={{ fontName: "proggy_scene", fontSize: 16, align: "left" }}
           anchor={[0.5,1]}
-          interactive={true}
-          pointerdown={() => can_select_map_node ? selectMapNode(canvasKey) : null}
         />
       )}
     </Container>
@@ -639,12 +752,14 @@ export const Canvas = () => {
   const canvas = useCanvasCtx()
   const { 
     camera:mapCamera, setCamera:setMapCamera,
-    current_layer, maps, current_map, node_parts,
+    current_layer, maps, current_map, node_parts, draggingNode,
     onPlace, deleteTile, finishNode, resetNodePath, deleteNode, deleteNodePoint, toggleNodeEdge,
+    selectMapNode
   } = canvas
   const [_, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({x:0, y:0})
-  const { getItem, selectedItem } = useSidebarCtx()
+  const sidebar = useSidebarCtx()
+  const { getItem, selectedItem } = sidebar
   const [pathMode, setPathMode] = useState(false)
   const [lastMap, setLastMap] = useState("")
 
@@ -718,9 +833,11 @@ export const Canvas = () => {
     // node path editing 
     if (e.key === "Control")
       setPathMode(true)
-    // stop making a path 
-    if (e.key === "Escape")
+    // stop everything
+    if (e.key === "Escape") {
       resetNodePath()
+      selectMapNode()
+    }
   }, [setDragging, maps, current_map, finishNode, setPathMode, resetNodePath])
 
   useEvent("keyup", (e:KeyboardEvent) => {
@@ -765,7 +882,7 @@ export const Canvas = () => {
       className={bss({ dragging })}
       onMouseDown={e => {
         setFocused(true)
-        if (e.buttons === 1 && !pathMode)
+        if (e.buttons === 1 && !pathMode && !draggingNode)
           onPlace(snapped_mouse.x, snapped_mouse.y)
       }}
       onMouseOver={e => {
@@ -833,6 +950,7 @@ export const Canvas = () => {
                       {...node}
                       canvasKey={node.key}
                       canvas={canvas}
+                      sidebar={sidebar}
                       item={getItem(node.id)}
                       size={Math.max(6, getItem(node.id).connect_type === "none" ? layer.snap.x : 6)}
                       key={node.key}
@@ -850,6 +968,8 @@ export const Canvas = () => {
                     <Node
                       key={`incomplete-${selectedItem.id}`}
                       canvasKey={`incomplete-${selectedItem.id}`}
+                      canvas={canvas}
+                      sidebar={sidebar}
                       id={selectedItem.id}
                       item={selectedItem}
                       node={{

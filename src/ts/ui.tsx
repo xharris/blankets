@@ -325,8 +325,9 @@ export class Electron {
 // Util
 
 export type ObjectAny<T = any> = {[key:string]:T}
-
 export type ValueOf<T> = T[keyof T]
+export type GetLength<original extends any[]> = original extends { length: infer L } ? L : never
+// export type GetLast<original extends any[]> = original[Prev<GetLength<original>>]
 
 declare global {
   interface ObjectConstructor {
@@ -353,9 +354,12 @@ export const useWindowSize = () => {
   return size
 }
 
-export const ObjectGet = (obj:ObjectAny, ...args:string[]):any => {
-  while (obj != null && args.length > 0)
-    obj = obj[args.splice(0,1)[0]]
+type IObjectGet = <T = any>(obj?:ObjectAny|T, ...args:string[]) => T
+
+export const ObjectGet:IObjectGet = (obj, ...args) => {
+  obj = obj as ObjectAny
+  if (obj != null && typeof obj === "object" && args.length > 0)
+    return ObjectGet(obj[args[0]], ...args.splice(1)) 
   return args.length === 0 ? obj : null
 }
 

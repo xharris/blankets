@@ -111,11 +111,11 @@ export const useSidebarCtx = () => {
     items.filter(item => item.type === type)
   ,[items])
 
-  const selectItem = useCallback((id:string) =>
+  const selectItem = useCallback((id:string, set?:boolean) =>
     update({
-      selectedItem: items.find(item => item.id === id)
+      selectedItem: selectedItem && selectedItem.id === id && !set ? null : items.find(item => item.id === id)
     })
-  ,[update, items])
+  ,[update, items, selectedItem])
 
   return {
     ...props,
