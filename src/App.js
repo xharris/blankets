@@ -11,6 +11,7 @@ import { SaveCtxProvider } from 'ts/savecontext'
 
 import './App.css';
 import "sass/index.scss";
+import { useEffect } from 'react';
 
 const App = () => {
   // const project_path = "/home/xhh/Documents/PROJECTS/lua_fun/love2deng"
@@ -44,40 +45,38 @@ const App = () => {
 }
 
 
-const AppBody = () => {
-  return (
-    <div className="App">
-      <Nav />
-      <Sidebar
-        defaultItem={{
-          layer: { 
-            z: 0,
-            snap: { x:32, y:32 },
-            offset: { x:0, y:0 }
-          },
-          tileset: {
-            size: {/* w, h */},
-            crop: {/* x, y, w, h */},
-            margin: {/* x, y */}
-          },
-          node: {
-            connect_type: "none"
-          }
-        }}
-        sort={{ 
-          layer: 'z'
-        }}
-        body={{
-          layer: Layer,
-          tileset: Tileset,
-          map: Map,
-          node: Node
-        }}
-      />
-      <Canvas />
-    </div>
-  )
-}
+const AppBody = () => (
+  <div className="App">
+    <Nav />
+    <Sidebar
+      defaultItem={{
+        layer: { 
+          z: 0,
+          snap: { x:32, y:32 },
+          offset: { x:0, y:0 }
+        },
+        tileset: {
+          size: {/* w, h */},
+          crop: {/* x, y, w, h */},
+          margin: {/* x, y */}
+        },
+        node: {
+          connect_type: "none"
+        }
+      }}
+      sort={{ 
+        layer: (a,b) => b.z - a.z
+      }}
+      body={{
+        layer: Layer,
+        tileset: Tileset,
+        map: Map,
+        node: Node
+      }}
+    />
+    <Canvas />
+  </div>
+)
 
 
 export default App;

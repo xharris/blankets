@@ -168,7 +168,11 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
               updateItem(id, { name: e.target.value }) 
               break
             case "size":
-              updateItem(id, { size: { ...size, [subname]: e.target.valueAsNumber } })
+              const new_size = { ...size, [subname]: e.target.valueAsNumber }
+              updateItem(id, { 
+                size: new_size,
+                tilecount: Math.ceil((imageSize[0] / new_size.w) * (imageSize[1] / new_size.h))
+              })
               break 
             case "crop":
               updateItem(id, { crop: { ...crop, [subname]: e.target.valueAsNumber } })

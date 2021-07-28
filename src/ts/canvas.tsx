@@ -17,8 +17,8 @@ type NodeInfo = { points:Point[], edges:Edge[], label?:string }
 type Edge = [Point, Point, string?]
 type Point = { x:number, y:number, label?:string }
 
-type Map = {
-  camera:Point,
+export type Map = {
+  camera: Point,
   tiles?:ObjectAny<ITile[]>,
   nodes?:ObjectAny<INode[]>
 }
@@ -26,7 +26,6 @@ type Map = {
 type CanvasGlobalCtx = {
   tiles: TileCropInfo[],
   node_parts: Point[],
-  camera: ObjectAny<Point>,
   selectedNode: string,
   draggingNode: boolean
 }
@@ -60,10 +59,9 @@ const bss = bem("canvas")
 
 export const useCanvasCtx = () => {
   const { saveHistory } = useProject()
-  const { data:{ tiles, node_parts, camera, selectedNode, draggingNode }, update:updateGlobal } = useGlobalCtx<CanvasGlobalCtx>("canvas", { 
+  const { data:{ tiles, node_parts, selectedNode, draggingNode }, update:updateGlobal } = useGlobalCtx<CanvasGlobalCtx>("canvas", { 
     tiles:[], 
     node_parts:[],
-    camera:{},
     selectedNode: "",
     draggingNode: false,
   })
@@ -277,28 +275,18 @@ export const useCanvasCtx = () => {
       update({ current_map:id })
   }, [update, current_map])
 
-  // const moveCamera = useCallback((x:number, y:number) => {
-  //   updateGlobal((prev) => ({
-  //     camera: {
-  //       ...prev.camera,
-  //       [current_map]: prev.camera[current_map] ? {
-  //         x: prev.camera[current_map].x + x, 
-  //         y: prev.camera[current_map].y + y
-  //       } : {
-  //         x, y
-  //       }
-  //     }
-  //   }))
-  // }, [updateGlobal, current_map])
-
   const setCamera = useCallback((x:number, y:number) => {
-    updateGlobal((prev) => ({
-      camera: {
-        ...prev.camera,
-        [current_map]: { x, y }
-      }
-    }))
-  }, [updateGlobal, current_map])
+    if (current_map)
+      update({
+        maps: {
+          ...maps,
+          [current_map]: {
+            ...maps[current_map],
+            camera: { x, y }
+          }
+        }
+      })
+  }, [update, current_map, maps])
 
   const deleteNode = useCallback((key:string) => {
     updateMap(current_map, current_layer, "nodes", 
@@ -392,7 +380,7 @@ export const useCanvasCtx = () => {
     maps,
     current_map,
     current_layer,
-    camera: camera[current_map] || { x:0, y:0 },
+    camera: { x:0, y:0 },
     node_parts,
     selectedNode,
     draggingNode,
@@ -626,6 +614,9 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
     g.drawRect(0, 0, size, size)
     if (!(incomplete || selectedNode === canvasKey))
       g.endFill()
+    // corner position marker
+    if (item.connect_type === "none")
+      g.drawRect(-2, -2, 4, 4)
   }, [item, theme, incomplete, size, selectedNode, canvasKey])
 
   return (
@@ -688,8 +679,8 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
       {points.map((point, i) => (
         <Graphics
           key={`${point.x},${point.y},${i}`}
-          x={point.x - (size/2)}
-          y={point.y - (size/2)}
+          x={item.connect_type === "none" ? point.x : point.x - (size/2)}
+          y={item.connect_type === "none" ? point.y : point.y - (size/2)}
           interactive={true}
           hitArea={new PIXI.Rectangle(0, 0, extra_hit, extra_hit)}
           pointerdown={e => {
@@ -713,8 +704,8 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
       ))}
       {points.length > 0 && (
         <BitmapText
-          x={points[0].x}
-          y={points[0].y - (size/2) - 4}
+          x={item.connect_type === "none" ? points[0].x + (size/2) : points[0].x}
+          y={item.connect_type === "none" ? points[0].y - 4 : points[0].y - (size/2) - 4}
           text={selectedNode === canvasKey ? `[${item.name}]` : item.name}
           style={{ fontName: "proggy_scene", fontSize: 16, align: "left" }}
           anchor={[0.5,1]}
@@ -756,14 +747,14 @@ export const Canvas = () => {
     onPlace, deleteTile, finishNode, resetNodePath, deleteNode, deleteNodePoint, toggleNodeEdge,
     selectMapNode
   } = canvas
-  const [_, setFocused] = useState(false)
+  const [focused, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({x:0, y:0})
   const sidebar = useSidebarCtx()
   const { getItem, selectedItem } = sidebar
   const [pathMode, setPathMode] = useState(false)
   const [lastMap, setLastMap] = useState("")
 
-  const can_drag_camera = maps && current_map
+  const can_drag_camera = maps && current_map && focused
   const layer = getItem(current_layer)
 
   const [camera, setCamera] = useState({x:0,y:0})
@@ -776,7 +767,7 @@ export const Canvas = () => {
       setCamera({ ...mapCamera })
       setLastMap(current_map)
     }
-  }, [current_map, mapCamera, lastMap, setLastMap])
+  }, [current_map, mapCamera, lastMap, setLastMap, setCamera])
 
   const drawGrid = useCallback((grid:PIXI.Graphics) => {
     if (grid)
@@ -911,14 +902,14 @@ export const Canvas = () => {
           x={camera.x}
           y={camera.y}
         >
-          {current_map && Object.keys(maps[current_map].tiles || [])
+          {Object.keys(maps[current_map].tiles || [])
             .sort((a, b) => getItem(a).z - getItem(b).z)
             .map(id => (
               <Container 
                 key={id} 
                 alpha={current_layer === id ? 1 : inactive_alpha}
               >
-                {current_map && maps[current_map].tiles[id].map(tile => (
+                {maps[current_map].tiles[id].map(tile => (
                   <Tile 
                     {...tile} 
                     key={tile.key}
@@ -928,14 +919,14 @@ export const Canvas = () => {
                 ))}
               </Container>
             ))}
-            {current_map && Object.keys(maps[current_map].nodes || [])
+            {Object.keys(maps[current_map].nodes || [])
               .sort((a, b) => getItem(a).z - getItem(b).z)
               .map(id => (
                 <Container 
                   key={`layer-${id}`} 
                   alpha={current_layer === id ? 1 : inactive_alpha}
                 >
-                  {current_map && maps[current_map].nodes[id]
+                  {maps[current_map].nodes[id]
                   .sort((a, b) => {
                     if (!selectedItem || selectedItem.type !== "node")
                       return 0
@@ -1008,8 +999,6 @@ export const Canvas = () => {
                 !selectedItem || !["node", "label", "tileset"].includes(selectedItem.type) ? '' :
                 `${selectedItem.name}${pathMode && selectedItem.connect_type !== "none" ? ".edges" : ''}`,
                 // map.layer
-                !current_map ? '' :
-                !current_layer ? getItem(current_map).name :
                 `${getItem(current_map).name}.${getItem(current_layer).name}`
               ].join('\n')}
               style={{ fontName: "proggy_scene", fontSize: 32, align: "right" }}

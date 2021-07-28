@@ -1,11 +1,13 @@
 import { useGlobalCtx } from "ts/globalcontext"
-import { Electron, ObjectGet } from "ts/ui"
+import { Electron, ObjectAny, ObjectGet, stringifyJSON } from "ts/ui"
 import { basename, join } from "path"
 import { useCallback, useEffect } from "react"
 import { watch } from "chokidar"
-import { FSWatcher, pathExists, readFile, Stats, writeFile } from "fs-extra"
+import { ensureDir, FSWatcher, pathExists, readFile, Stats, writeFile } from "fs-extra"
 import { useSaveCtx } from "ts/savecontext"
 import { useUndo } from "ts/undo"
+import { useSidebarCtx } from "ts/sidebar"
+import { Map } from "ts/canvas"
 
 const EXTENSIONS = {
   image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
@@ -37,6 +39,7 @@ export const useProject = () => {
   })
   const { all_data, data:savedata, load } = useSaveCtx("project", defaultProject)
   const { saveHistory, resetHistory } = useUndo(all_data, load, { size: savedata.settings.history_size })
+  const { getItem, getItems } = useSidebarCtx()
 
   const addAsset = useCallback((type:AssetAction["type"], path:string) => {
     if (ObjectGet(assets, type) && !assets[type].includes(path))
@@ -65,7 +68,6 @@ export const useProject = () => {
 
   const saveProject = useCallback(() => {
     if (all_data && path) {
-      console.log("saving")
       writeFile(join(path, 'blanke.json'), JSON.stringify({
         ...all_data,
         project: {
@@ -73,36 +75,130 @@ export const useProject = () => {
           path: undefined
         }
       }))
-    }
-  }, [all_data, path])
+      // save maps 
 
-  useEffect(() => {
-    const auto_save = ObjectGet(savedata, "settings", "auto_save")
-    if (auto_save) {
-      saveProject()
-    }
-  }, [savedata, saveProject])
-  
-  useEffect(() => {
-    let watcher:FSWatcher
-    if (path) {
-      // watch the directory for assets
-      watcher = watch(path, {
-        ignored: [
-          "**/node_modules/**",
-          /(^|[\/\\])\../
-        ]
-      })
-      watcher.on('add', fileUpdate)
-      watcher.on('change', fileUpdate)
-    }
+      const formatMap = (mapdata:Map) => {
+        let lastgid = 0
+        const gids:ObjectAny<number> = {}
+        const image_size:ObjectAny<[number,number]> = {}
 
-    return () => {
-      if (watcher)
-        watcher.close()
-      watcher = null
+        const ret = {
+          version: "1.5",
+          luaversion: "5.1",
+          tiledversion: "1.7.1",
+          orientation: "orthogonal",
+          renderorder: "right-down",
+          width: 100,
+          height: 100,
+          tilewidth: 32,
+          tileheight: 32,
+          nextlayerid: 0, // changes
+          nextobjectid: 0, // changes 
+          properties: {},
+          tilesets: getItems("tileset").map(tileset => {
+            const [imagewidth, imageheight] = [
+              tileset.crop.w || ((tileset.size.w || 0) - (tileset.crop.x || 0)),
+              tileset.crop.h || ((tileset.size.h || 0) - (tileset.crop.y || 0))
+            ]
+            const tilecount = tileset.tilecount
+            image_size[tileset.image] = [imagewidth, imageheight]
+            const frame = tileset.size ?? { w:1, h:1 }
+            gids[tileset.id] = lastgid + 1
+            lastgid += tilecount
+
+            return {
+              name: tileset.name,
+              firstgid: gids[tileset.id],
+              tilewidth: frame.w,
+              tileheight: frame.h,
+              spacing: 0,
+              margin: 0,
+              columns: Math.ceil(imagewidth / frame.w),
+              image: tileset.image,
+              imagewidth,
+              imageheight,
+              objectalignment: "topleft",
+              tileoffset: { x:0, y:0 },
+              grid: {
+                orientation: "orthogonal",
+                width: frame.w,
+                height: frame.h
+              },
+              properties: {},
+              wangsets: {},
+              tilecount,
+              tiles: {}
+            }
+          }),
+          layers: [
+            ...Object.entries(mapdata.tiles || {}).map(([id, tiles], i) => {
+              const layer = getItem(id)
+              const chunk_size = [16, 16]
+              const chunks:{x:number,y:number,width:number,height:number,data:number[]}[] = []
+              tiles.forEach(tile => {
+                let [tilex, tiley] = [
+                  tile.x - (tile.x % layer.snap.x),
+                  tile.y - (tile.y % layer.snap.y)
+                ]
+                const [chunkx, chunky] = [
+                  Math.floor(tile.y / (layer.snap.x * chunk_size[0])) - (tile.x < 0 ? layer.snap.x : 0),
+                  Math.floor(tile.x / (layer.snap.y * chunk_size[1])) - (tile.y < 0 ? layer.snap.y : 0)
+                ]
+                // const data_idx = chunky * chunk_size[1] + chunkx
+                let chunk = chunks.find(c => chunkx >= c.x && chunky >= c.y && chunkx < c.width && chunky < c.height)
+                if (!chunk) {
+                  chunk = { x:chunkx, y:chunky, width:chunk_size[0], height:chunk_size[1], data:(new Array(chunk_size[0] * chunk_size[1])).fill(0) }
+                  chunks.push(chunk)
+                }
+                const [chunk_tilex, chunk_tiley] = [
+                  Math.floor(tile.x / (chunk_size[0])),
+                  Math.floor(tile.y / chunk_size[1])
+                ]
+                const position_idx = Math.floor(chunk_tilex * chunk_size[0] + chunk_tiley) 
+                console.log(tilex, tiley, chunkx, chunky)
+                const tile_idx = Math.floor(tile.tile.x * (image_size[tile.tile.path][0] / tile.tile.w) + tile.tile.y)
+                console.log(tile_idx, chunk_tilex, chunk_tiley)
+                chunk.data[position_idx] = tile_idx
+              })
+
+              return {
+                type: "tilelayer",
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+                i,
+                name: getItem(id).name,
+                visible: true,
+                opacity: 1,
+                offsetx: 0,
+                offsety: 0,
+                parallaxx: 1,
+                parallaxy: 1,
+                properties: {},
+                encoding: "lua",
+                chunks
+              }
+            }),
+            // ...Object.entries(mapdata.nodes || {}).map(([id, nodes], i) => {
+            //   return {}
+            // })
+          ]
+        }
+        return ret
+      }
+
+      ensureDir(join(path, 'assets', 'map'))
+        .then(() => 
+          Promise.all(
+            Object.entries(all_data.canvas.maps)
+              .map(([map, data]) => 
+                writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), stringifyJSON(formatMap(data as Map), { language:"lua" }))
+              )
+          )
+        )
     }
-  }, [path, fileUpdate])
+  }, [all_data, path, getItem])
 
   const loadProject = useCallback((new_path, load_data) => {
     load({ ...defaultProject, ...load_data })
@@ -137,6 +233,34 @@ export const useProject = () => {
       update({ path:null, loading:false })
     })
   }, [loadProject, update])
+
+  useEffect(() => {
+    const auto_save = ObjectGet(savedata, "settings", "auto_save")
+    if (auto_save) {
+      saveProject()
+    }
+  }, [savedata, saveProject])
+  
+  useEffect(() => {
+    let watcher:FSWatcher
+    if (path) {
+      // watch the directory for assets
+      watcher = watch(path, {
+        ignored: [
+          "**/node_modules/**",
+          /(^|[\/\\])\../
+        ]
+      })
+      watcher.on('add', fileUpdate)
+      watcher.on('change', fileUpdate)
+    }
+
+    return () => {
+      if (watcher)
+        watcher.close()
+      watcher = null
+    }
+  }, [path, fileUpdate])
 
   return { 
     name: basename(path || "BlankE"),
