@@ -404,7 +404,7 @@ export const useLayoutEvent = (type:string|string[], listener:any, deps?:Depende
 type IStringifyJson = (
   data: ObjectAny,
   options?: {
-    language?:"lua"
+    language?:string,
     equals?:string,
     array?:[string,string],
     key?:{
@@ -412,7 +412,8 @@ type IStringifyJson = (
     }
     value?:{ 
       [key:string]: (key:string) => string 
-    }
+    },
+    array_width?:ObjectAny<number>
   }
 ) => string
 
@@ -426,7 +427,8 @@ export const stringifyJSON:IStringifyJson = (data, options) => {
       },
       value: {
         string: k => `"${k}"`
-      }
+      },
+      ...options
     }
   }
 
@@ -435,33 +437,42 @@ export const stringifyJSON:IStringifyJson = (data, options) => {
     array=['[',']'],
     key={},
     value={},
+    array_width={}
   } = options
 
-  const _stringify = (data:any, depth=1):string => {
+  const _stringify = (data:any, depth=1, from=""):string => {
     const indent = new Array(depth).fill('    ').join('')
     const indent_lessone = new Array(Math.max(0, depth-1)).fill('    ').join('')
     const type = typeof data
+    const inline = !!array_width[from]
+    const newline = inline ? ' ' : '\n'
+
+    const next_from = (k:string) => from.length > 0 ? `${from}.${k}` : k
 
     switch (type) {
       case "object":
         if (Array.isArray(data)) {
-          if (data.some(d => typeof d === "object")) {
+          if (data.length === 0)
+            return `${array[0]}${array[1]}`
+          else if (!array_width[from] && data.some(d => typeof d === "object")) {
             const arr = Object.values(data).map((v, i) => 
-              `${Array.isArray(data) && i !== 0 ? indent : ''}${_stringify(v, depth+1)}`
+              `${Array.isArray(data) && i !== 0 ? indent : ''}${_stringify(v, depth+1, from)}`
             )
             return `${array[0]}\n${indent}${arr.join(',\n')}\n${indent_lessone}${array[1]}`
           } else {
-            const arr = Object.values(data).map((v) => _stringify(v, 0))
+            const arr = Object.values(data).map((v) => _stringify(v, typeof v === "object" ? depth+1 : 0, from))
             let new_arr = []
-            for (let i = 0, j = arr.length; i < j; i += 16) {
-              new_arr.push(indent + arr.slice(i, i + 16).join(', '))
+            for (let i = 0, j = arr.length; i < j; i += array_width[from]) {
+              new_arr.push(indent + arr.slice(i, i + array_width[from]).join(','))
             }
             return `${array[0]}\n${new_arr.join(',\n')}\n${indent_lessone}${array[1]}` 
           }
-        } else 
-          return `{\n${Object.entries(data).map(([k,v]) => 
-            `${indent}${key[typeof k] ? key[typeof k](k) : k} ${equals} ${_stringify(v, depth+1)}`
-            ).join(',\n')}\n${indent_lessone}}`
+        } else if (Object.keys(data).length === 0)
+            return "{}"
+        else 
+          return `{${newline}${Object.entries(data).filter(([_, v]) => v != undefined).map(([k,v]) => 
+            `${inline ? '' : indent}${key[typeof k] ? key[typeof k](k) : k} ${equals} ${_stringify(v, depth+1, next_from(k))}`
+            ).join(`, ${newline}`)}${newline}${inline ? '' : indent_lessone}}`
       case "number":
         if (!isFinite(data))
             return "\"Inf\""

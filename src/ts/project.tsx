@@ -1,12 +1,12 @@
 import { useGlobalCtx } from "ts/globalcontext"
 import { Electron, ObjectAny, ObjectGet, stringifyJSON } from "ts/ui"
-import { basename, join } from "path"
+import { basename, join, relative } from "path"
 import { useCallback, useEffect } from "react"
 import { watch } from "chokidar"
 import { ensureDir, FSWatcher, pathExists, readFile, Stats, writeFile } from "fs-extra"
 import { useSaveCtx } from "ts/savecontext"
 import { useUndo } from "ts/undo"
-import { useSidebarCtx } from "ts/sidebar"
+import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { Map } from "ts/canvas"
 
 const EXTENSIONS = {
@@ -75,12 +75,34 @@ export const useProject = () => {
           path: undefined
         }
       }))
+
+      const stringify_opts = { 
+        language:"lua",
+        array_width: {
+          "layers.chunks.data": 16,
+          "layers.objects.edges": 1,
+          "layers.objects.polyline": 1
+        }
+      }
+
       // save maps 
 
-      const formatMap = (mapdata:Map) => {
+      const formatMap = (mapdata:Map, tilesets:ItemOptions[]) => {
         let lastgid = 0
         const gids:ObjectAny<number> = {}
         const image_size:ObjectAny<[number,number]> = {}
+        let last_obj_gid = 1
+        const layerProperties = (lid:string) => {
+          const layer = getItem(lid)
+          return {
+            visible: true,
+            offset: 1,
+            offsetx: layer.offset.x,
+            offsety: layer.offset.y,
+            parallaxx: 1,
+            parallaxy: 1
+          }
+        }
 
         const ret = {
           version: "1.5",
@@ -95,11 +117,8 @@ export const useProject = () => {
           nextlayerid: 0, // changes
           nextobjectid: 0, // changes 
           properties: {},
-          tilesets: getItems("tileset").map(tileset => {
-            const [imagewidth, imageheight] = [
-              tileset.crop.w || ((tileset.size.w || 0) - (tileset.crop.x || 0)),
-              tileset.crop.h || ((tileset.size.h || 0) - (tileset.crop.y || 0))
-            ]
+          tilesets: tilesets.map(tileset => {
+            const [imagewidth, imageheight] = tileset.image_size
             const tilecount = tileset.tilecount
             image_size[tileset.image] = [imagewidth, imageheight]
             const frame = tileset.size ?? { w:1, h:1 }
@@ -114,7 +133,7 @@ export const useProject = () => {
               spacing: 0,
               margin: 0,
               columns: Math.ceil(imagewidth / frame.w),
-              image: tileset.image,
+              image: relative(path, tileset.image),
               imagewidth,
               imageheight,
               objectalignment: "topleft",
@@ -136,29 +155,28 @@ export const useProject = () => {
               const chunk_size = [16, 16]
               const chunks:{x:number,y:number,width:number,height:number,data:number[]}[] = []
               tiles.forEach(tile => {
-                let [tilex, tiley] = [
-                  tile.x - (tile.x % layer.snap.x),
-                  tile.y - (tile.y % layer.snap.y)
-                ]
+                const [imagewidth] = image_size[tile.tile.path]
                 const [chunkx, chunky] = [
                   Math.floor(tile.y / (layer.snap.x * chunk_size[0])) - (tile.x < 0 ? layer.snap.x : 0),
                   Math.floor(tile.x / (layer.snap.y * chunk_size[1])) - (tile.y < 0 ? layer.snap.y : 0)
                 ]
-                // const data_idx = chunky * chunk_size[1] + chunkx
                 let chunk = chunks.find(c => chunkx >= c.x && chunky >= c.y && chunkx < c.width && chunky < c.height)
                 if (!chunk) {
                   chunk = { x:chunkx, y:chunky, width:chunk_size[0], height:chunk_size[1], data:(new Array(chunk_size[0] * chunk_size[1])).fill(0) }
                   chunks.push(chunk)
                 }
                 const [chunk_tilex, chunk_tiley] = [
-                  Math.floor(tile.x / (chunk_size[0])),
-                  Math.floor(tile.y / chunk_size[1])
+                  Math.floor(tile.x / layer.snap.x),
+                  Math.floor(tile.y / layer.snap.y)
                 ]
-                const position_idx = Math.floor(chunk_tilex * chunk_size[0] + chunk_tiley) 
-                console.log(tilex, tiley, chunkx, chunky)
-                const tile_idx = Math.floor(tile.tile.x * (image_size[tile.tile.path][0] / tile.tile.w) + tile.tile.y)
-                console.log(tile_idx, chunk_tilex, chunk_tiley)
-                chunk.data[position_idx] = tile_idx
+                const [tilex, tiley] = [Math.floor(tile.tile.x / tile.tile.w), Math.floor(tile.tile.y / tile.tile.h)]
+                const tile_columns = imagewidth / tile.tile.w
+
+                const position_idx = Math.floor(chunk_tiley * chunk_size[0] + chunk_tilex) 
+                const tile_idx = Math.floor(tiley * tile_columns + tilex) + gids[tile.id]
+
+                if (position_idx < chunk.data.length - 1)
+                  chunk.data[position_idx] = tile_idx
               })
 
               return {
@@ -167,36 +185,103 @@ export const useProject = () => {
                 y: 0,
                 width: 100,
                 height: 100,
-                i,
+                id: i,
                 name: getItem(id).name,
-                visible: true,
-                opacity: 1,
-                offsetx: 0,
-                offsety: 0,
-                parallaxx: 1,
-                parallaxy: 1,
+                ...layerProperties(id),
                 properties: {},
                 encoding: "lua",
                 chunks
               }
             }),
-            // ...Object.entries(mapdata.nodes || {}).map(([id, nodes], i) => {
-            //   return {}
-            // })
+            // depth probably doesn't need to be sorted with tiles
+            ...Object.entries(mapdata.nodes || {}).reduce((objectgroups, [layerid, nodes]) => {
+              const tileset_layers = Object.keys(mapdata.tiles).length
+
+              nodes.forEach(node => {
+                const layer = getItem(layerid)
+                const node_options = getItem(node.id)
+                let group = objectgroups.find(g => g.properties.z === layer.z && g.name === node_options.name)
+                // add new object layer
+                if (!group) {
+                  group = {
+                    type: "objectgroup",
+                    draworder: "topdown",
+                    id: tileset_layers + objectgroups.length,
+                    name: `${layer.name}.Objects`,
+                    ...layerProperties(layerid),
+                    properties: {
+                      z: layer.z, 
+                      name: node_options.name
+                    },
+                    objects: []
+                  }
+                  objectgroups.push(group)
+                }
+                // add object to object layer
+                const is_polyline = node.node.points.length > 1
+                let least_x = node.node.points[0].x 
+                let least_y = node.node.points[0].y
+                if (is_polyline)
+                  node.node.points.forEach(pt => {
+                    if (pt.x < least_x && pt.y < least_y) {
+                      least_x = pt.x 
+                      least_y = pt.y
+                    }
+                  })
+
+                const objinfo = {
+                  id: last_obj_gid++,
+                  name: node_options.name,
+                  type: "",
+                  shape: is_polyline ? "polyline" : "point",
+                  x: least_x, 
+                  y: least_y,
+                  width: 0, 
+                  height: 0,
+                  rotation: 0,
+                  visible: true,
+                  edges: node.node.edges.map(([a,b]) => [
+                    { x:a.x - least_x, y:a.y - least_y },
+                    { x:b.x - least_x, y:b.y - least_y }
+                  ]),
+                  polyline: !is_polyline ? undefined : node.node.points.map(pt => ({
+                    x: pt.x - least_x, y: pt.y - least_y
+                  })),
+                  properties: {}
+                }
+                group.objects.push(objinfo)
+              })
+
+              return objectgroups
+            }, []).filter(g => g)
           ]
         }
         return ret
       }
 
-      ensureDir(join(path, 'assets', 'map'))
-        .then(() => 
-          Promise.all(
+      ensureDir(join(path, 'assets', 'map')).then(() => {
+        Promise.all(getItems("tileset").map(tileset => new Promise<ItemOptions>((res) => {
+          let img = new Image()
+          img.src = `file://${tileset.image}`
+          let image_size = [0, 0]
+          if (tileset.crop)
+            image_size = [tileset.crop.w, tileset.crop.h] 
+
+          img.onload = () => {
+            if (image_size[0] <= 0)
+              image_size[0] = img.width 
+            if (image_size[1] <= 0)
+              image_size[1] = img.height
+            tileset.image_size = [img.width, img.height]
+
+            res(tileset)
+          }
+        })))
+          .then(tilesets => Promise.all(
             Object.entries(all_data.canvas.maps)
-              .map(([map, data]) => 
-                writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), stringifyJSON(formatMap(data as Map), { language:"lua" }))
-              )
-          )
-        )
+              .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), stringifyJSON(formatMap(data as Map, tilesets), stringify_opts)))
+          ))
+      })
     }
   }, [all_data, path, getItem])
 

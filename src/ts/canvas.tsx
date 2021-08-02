@@ -940,7 +940,7 @@ export const Canvas = () => {
                     <Node 
                       {...node}
                       canvasKey={node.key}
-                      canvas={canvas}
+                      canvas={{ ...canvas, camera }}
                       sidebar={sidebar}
                       item={getItem(node.id)}
                       size={Math.max(6, getItem(node.id).connect_type === "none" ? layer.snap.x : 6)}
@@ -959,7 +959,7 @@ export const Canvas = () => {
                     <Node
                       key={`incomplete-${selectedItem.id}`}
                       canvasKey={`incomplete-${selectedItem.id}`}
-                      canvas={canvas}
+                      canvas={{ ...canvas, camera }}
                       sidebar={sidebar}
                       id={selectedItem.id}
                       item={selectedItem}

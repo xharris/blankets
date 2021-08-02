@@ -65,7 +65,7 @@ const AppBody = () => (
         }
       }}
       sort={{ 
-        layer: (a,b) => b.z - a.z
+        layer: (a,b) => a.z - b.z
       }}
       body={{
         layer: Layer,
