@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import ProggySceneFont from "./sass/proggy_scene.fnt"
 import * as PIXI from "pixi.js"
 import { app } from "@electron/remote"
 

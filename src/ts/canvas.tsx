@@ -5,10 +5,11 @@ import * as PIXI from "pixi.js"
 import { Stage, Container, Graphics, BitmapText, Sprite, useApp } from "@inlet/react-pixi"
 import { useSaveCtx } from "ts/savecontext"
 import { useProject } from "ts/project"
-import { app } from "@electron/remote"
 import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { nanoid } from 'nanoid'
-// import { useProject } from "./project"
+
+PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST
+PIXI.settings.ROUND_PIXELS = true
 
 type ElementType = "nodes"|"tiles"
 type TileCropInfo = { path:string, x:number, y:number, w:number, h:number }
@@ -63,10 +64,22 @@ export const useCanvasCtx = () => {
     tiles:[], 
     node_parts:[],
     selectedNode: "",
-    draggingNode: false,
+    draggingNode: false
   })
   const { data:{ maps = {}, current_layer, current_map }, update } = useSaveCtx<CanvasCtx>("canvas")
   const { selectedItem, getItem, getItems } = useSidebarCtx()
+
+  useEffect(() => {
+    PIXI.BitmapFont.from("proggy_scene", {
+      fontFamily: "ProggySquare",
+      fontSize: 16,
+      fill: 0xFAFAFA,
+      stroke: 0x212121,
+      strokeThickness: 2
+    }, {
+      chars: PIXI.BitmapFont.ASCII
+    })
+  }, [])
 
   const updateMap:IUpdateMap = useCallback((map, layer, type, value) => {
     update({ 
@@ -338,7 +351,7 @@ export const useCanvasCtx = () => {
       ]
     )
     saveHistory()
-  }, [maps, current_layer, current_map, updateMap, saveHistory])
+  }, [maps, current_layer, current_map, updateMap, saveHistory])  
 
   // check if things were added/removed
   useEffect(() => {
@@ -380,7 +393,7 @@ export const useCanvasCtx = () => {
     maps,
     current_map,
     current_layer,
-    camera: { x:0, y:0 },
+    camera: maps[current_map] ? maps[current_map].camera : { x:0, y:0 },
     node_parts,
     selectedNode,
     draggingNode,
@@ -728,33 +741,25 @@ export const PointerLock = ({ enabled=false }) => {
   return <></>
 }
 
-
-if (!PIXI.Loader.shared.resources["ProggyScene"])
-  PIXI.Loader.shared
-    .add("ProggyScene", `file:///${app.getAppPath()}/src/sass/proggy_scene.fnt`)
-    .load()
-PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST
-PIXI.settings.ROUND_PIXELS = true
-
 export const Canvas = () => {
   const [width, height] = useWindowSize()
   const [dragging, setDragging] = useState<Point>()
   const [lockPointer, setLockPointer] = useState(false)
   const canvas = useCanvasCtx()
   const { 
-    camera:mapCamera, setCamera:setMapCamera,
+    camera:mapCamera, setCamera:setMapCamera, 
     current_layer, maps, current_map, node_parts, draggingNode,
     onPlace, deleteTile, finishNode, resetNodePath, deleteNode, deleteNodePoint, toggleNodeEdge,
     selectMapNode
   } = canvas
-  const [focused, setFocused] = useState(false)
+  const [_, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({x:0, y:0})
   const sidebar = useSidebarCtx()
   const { getItem, selectedItem } = sidebar
   const [pathMode, setPathMode] = useState(false)
   const [lastMap, setLastMap] = useState("")
 
-  const can_drag_camera = maps && current_map && focused
+  const can_drag_camera = maps && current_map
   const layer = getItem(current_layer)
 
   const [camera, setCamera] = useState({x:0,y:0})

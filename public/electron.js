@@ -27,7 +27,9 @@ app.whenReady().then(() => {
     }
   })
 
-  app.win.once('ready-to-show', () => { app.win.show() })
+  app.win.once('ready-to-show', () => { 
+    app.win.show() 
+  })
 
   app.win.loadURL(
     isDev

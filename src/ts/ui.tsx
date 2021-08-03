@@ -1,6 +1,6 @@
 import { css, cx } from "@emotion/css"
 import * as FIcon from "react-feather"
-import { dialog, Menu, getCurrentWindow } from "@electron/remote"
+import { dialog, Menu, getCurrentWindow, require as remoteRequire } from "@electron/remote"
 import React, { FunctionComponent, HTMLAttributes, createContext, useContext, InputHTMLAttributes, FormHTMLAttributes, useState, useEffect, DependencyList, useCallback, useLayoutEffect } from "react"
 import tinycolor from "tinycolor2"
 import { basename } from "path"
@@ -490,5 +490,7 @@ export const stringifyJSON:IStringifyJson = (data, options) => {
   
   return _stringify(data)
 }
+
+export const { isDev } = remoteRequire("./util.js")
 
 export { css, cx }
