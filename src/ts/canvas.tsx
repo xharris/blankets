@@ -23,6 +23,7 @@ type Point = { x:number, y:number, label?:{
 } }
 
 export type Map = {
+  [key:string]:any,
   camera: Point,
   tiles?:ObjectAny<ITile[]>,
   nodes?:ObjectAny<INode[]>
@@ -69,6 +70,7 @@ const pointEquals = (pt1:Point, pt2:Point) => (
   pt1.x === pt2.x && pt1.y === pt2.y 
 )
 const edgeKey = (edge:Edge) => `${edge[0].x},${edge[0].y},${edge[1].x},${edge[1].y}`
+
 const lineStyle = {
   join: PIXI.LINE_JOIN.ROUND
 }
@@ -85,7 +87,7 @@ export const useCanvasCtx = () => {
     editLabel: null
   })
   const { data:{ maps = {}, current_layer, current_map }, update } = useSaveCtx<CanvasCtx>("canvas")
-  const { selectedItem, getItem, getItems } = useSidebarCtx()
+  const { selectedItem, getItem } = useSidebarCtx()
 
   const updateMap:IUpdateMap = useCallback((map, layer, type, value) => {
     update({ 
@@ -260,24 +262,12 @@ export const useCanvasCtx = () => {
   }, [updateGlobal])
 
   const addLayer = useCallback((id:string) => {
-    if (!current_layer)
-      update({ 
-        current_layer: current_layer || id
-      })      
+    update({ current_layer: id || current_layer})     
   }, [current_layer, update])
 
-  const removeLayer = useCallback((id:string) => {
-    Object.keys(maps)
-      .forEach(map => {
-        updateMap(map, id, "tiles", undefined)
-        updateMap(map, id, "nodes", undefined)
-      })
-  }, [getItem, updateMap])
-
   const setLayer = useCallback((id:string) => {
-    if (current_layer !== id)
-      update({ current_layer:id })
-  }, [update, current_layer])
+    update({ current_layer: id })
+  }, [update])
 
   const addMap = useCallback((id:string) => {
     update({ 
@@ -287,13 +277,58 @@ export const useCanvasCtx = () => {
           camera: {x:0, y:0}
         } 
       },
-      current_map: current_map || id
+      current_map: id || current_map
     })      
   }, [maps, current_map, update])
 
+  const removeLayer = useCallback((id:string) => {
+    let new_current_layer:string = null
+    update(prev_maps => ({
+      maps:Object.keys(prev_maps.maps).reduce((new_maps, mapid) => ({
+        ...new_maps,
+        [mapid]: Object.keys(prev_maps.maps[mapid]).reduce((new_map, type) => {
+          Object.keys(prev_maps.maps[mapid][type]).forEach(lid => {
+            if (lid !== id)
+              new_current_layer = lid
+          })
+          return {
+            ...new_map,
+            [type]: {
+              ...prev_maps.maps[mapid][type],
+              [id]: undefined
+            }
+          }
+        }, { ...prev_maps.maps[mapid] })
+      }), { ...prev_maps.maps }),
+      current_layer: prev_maps.current_layer === id ? new_current_layer : prev_maps.current_layer
+    }))
+  }, [update])
+  
   const removeMap = useCallback((id:string) => {
-    update({ maps: { ...maps, [id]:null } })
-  }, [maps, update])
+    update({
+      maps: { ...maps, [id]:undefined },
+      current_map: current_map === id ? null : current_map
+    })
+  }, [maps, update, current_map])
+
+  const removeElement = useCallback((id:string, type:"tiles"|"nodes") => {
+    update(prev_maps => ({
+      ...prev_maps,
+      maps: Object.keys(prev_maps.maps).reduce((new_maps, mapid) => ({
+        ...new_maps,
+        [mapid]: {
+          ...prev_maps.maps[mapid],
+          [type]: Object.keys(prev_maps.maps[mapid][type]).reduce((new_layer, layerid) => {
+            const elements = prev_maps.maps[mapid][type][layerid] as (INode|ITile)[]
+            return {
+              ...new_layer,
+              [layerid]: elements.filter(val => val.key !== id)
+            }
+          }, { ...prev_maps.maps[mapid][type] as ObjectAny<(INode|ITile)[]> })
+        }
+      }), { ...prev_maps.maps })
+    }))
+  }, [update])
 
   const setMap = useCallback((id:string) => {
     if (current_map !== id)
@@ -365,31 +400,28 @@ export const useCanvasCtx = () => {
     saveHistory()
   }, [maps, current_layer, current_map, updateMap, saveHistory])  
 
-  // check if things were added/removed
-  useEffect(() => {
-    // REMOVED
-    Object.keys(maps).forEach(id => {
-      if (!getItem(id))
-        removeMap(id)
-      else 
-        // layers
-        (["tiles", "nodes"] as ElementType[]).forEach((type) => {
-          if (maps[id][type])
-            Object.keys(maps[id][type]).forEach(lid => {
-              if (!getItem(lid)) 
-                removeLayer(lid)
-            })
-        })
-    })
-    // ADDED 
-    getItems("map").forEach(map => {
-      if (!maps[map.id])
-        addMap(map.id)
-    })
-    getItems("layer").forEach(layer => {
-      addLayer(layer.id)
-    })
-  }, [maps, getItem, getItems, removeMap, removeLayer, current_layer, addMap, addLayer])
+  useEvent("sidebar.item.delete", (e:CustomEventInit) => {
+    switch (e.detail.type) {
+      case "layer":
+        return removeLayer(e.detail.id)
+      case "node":
+        return removeElement(e.detail.id, "nodes")
+      case "tile":
+        return removeElement(e.detail.id, "tiles")
+      case "map":
+        return removeMap(e.detail.id)
+    }
+  }, [removeElement, removeMap, removeLayer])
+
+  useEvent("sidebar.item.add", (e:CustomEventInit) => {
+    console.log(e.detail)
+    switch (e.detail.type) {
+      case "layer": 
+        return addLayer(e.detail.id)
+      case "map": 
+        return addMap(e.detail.id)
+    }
+  }, [addMap, addLayer])
 
   // layer/map selected
   useEffect(() => {
@@ -424,9 +456,9 @@ export const useCanvasCtx = () => {
 }
 
 interface ICanvasElement {
-  key:string,
+  key?:string,
   canvasKey?:string,
-  id:string,
+  id?:string,
   x:number, 
   y:number,
   disabled?:boolean,
@@ -672,17 +704,6 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
       g.drawRect(-2, -2, 4, 4)
   }, [item, theme, incomplete, size, selectedNode, canvasKey])
 
-  if (!PIXI.BitmapFont.available["proggy_scene"])
-    PIXI.BitmapFont.from("proggy_scene", {
-      fontFamily: "ProggySquare",
-      fontSize: 16,
-      fill: 0xFAFAFA,
-      stroke: 0x212121,
-      strokeThickness: 2
-    }, {
-      chars: PIXI.BitmapFont.ASCII
-    })
-
   return (
     <Container
       {...props}
@@ -804,7 +825,7 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
           draw={drawPoint}
         />,
         point.label && (
-          <BitmapText
+          <Text
             key={`${point.x},${point.y},${i},text`}
             x={item.connect_type === "none" ? point.x + (size/2) : point.x}
             y={item.connect_type === "none" ? point.y + size : point.y + (size/2)}
@@ -825,7 +846,7 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
         )
       ])}
       {points.length > 0 && (
-        <BitmapText
+        <Text
           x={item.connect_type === "none" ? points[0].x + (size/2) : points[0].x}
           y={item.connect_type === "none" ? points[0].y - 4 : points[0].y - (size/2) - 4}
           text={selectedNode === canvasKey ? `[${item.name}]` : item.name}
@@ -835,6 +856,31 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
       )}
     </Container>
   )
+}
+
+interface IText extends ICanvasElement {}
+
+const Text:FC<IText & ComponentProps<typeof BitmapText>> = ({ ...props }) => {
+
+  useEffect(() => {
+    if (!PIXI.BitmapFont.available["proggy_scene"])
+      PIXI.BitmapFont.from("proggy_scene", {
+        fontFamily: "ProggySquare",
+        fontSize: 16,
+        fill: 0xFAFAFA,
+        stroke: 0x212121,
+        strokeThickness: 2
+      }, {
+        chars: PIXI.BitmapFont.ASCII
+      })
+  }, [PIXI.BitmapFont.available])
+
+  return PIXI.BitmapFont.available["proggy_scene"] ? (
+    <BitmapText 
+      {...props}
+      style={{ ...props.style, fontName: "proggy_scene" }}
+    />
+  ) : null
 }
 
 export const PointerLock = ({ enabled=false }) => {
@@ -871,6 +917,7 @@ export const Canvas = () => {
   const theme = useTheme()
 
   const can_drag_camera = maps && current_map
+  const map = getItem(current_map)
   const layer = getItem(current_layer)
 
   const [camera, setCamera] = useState({x:0,y:0})
@@ -888,8 +935,7 @@ export const Canvas = () => {
   const drawGrid = useCallback((grid:PIXI.Graphics) => {
     if (grid)
       grid.clear()
-    if (grid && current_layer && current_map) {
-      const layer = getItem(current_layer)
+    if (grid && layer) {
       const camera_offset = { x:camera.x % layer.snap.x, y:camera.y % layer.snap.y }
 
       let offx = (layer.offset.x % layer.snap.x) + camera_offset.x
@@ -915,7 +961,7 @@ export const Canvas = () => {
       grid.moveTo(0, camera.y)
       grid.lineTo(width, camera.y)
     }
-  }, [width, height, current_layer, current_map, camera, layer])
+  }, [width, height, layer, camera, layer])
 
   useEvent("mousedown", (e:MouseEvent) => {
     if (e.button === 1 && !dragging && can_drag_camera) {
@@ -967,6 +1013,10 @@ export const Canvas = () => {
     }))
   }, [dragging, setMousePos, camera, moveCamera])
 
+  const getLayer = (type:string) => (Object.keys(maps[current_map][type] || []) as string[])
+    .filter(lid => !!getItem(lid))
+    .sort((a, b) => getItem(a).z - getItem(b).z)
+
   const mouse = {
     x: mousePos.x - camera.x,
     y: mousePos.y - camera.y
@@ -984,7 +1034,7 @@ export const Canvas = () => {
 
   const inactive_alpha = 0.3
 
-  return !(current_map && current_layer) ? null : (
+  return !(map && layer) ? null : (
     <div 
       className={bss({ dragging })}
       onMouseDown={() => {
@@ -1022,8 +1072,7 @@ export const Canvas = () => {
           x={camera.x}
           y={camera.y}
         >
-          {Object.keys(maps[current_map].tiles || [])
-            .sort((a, b) => getItem(a).z - getItem(b).z)
+          {getLayer("tiles")
             .map(id => (
               <Container 
                 key={id} 
@@ -1039,69 +1088,69 @@ export const Canvas = () => {
                 ))}
               </Container>
             ))}
-            {Object.keys(maps[current_map].nodes || [])
-              .sort((a, b) => getItem(a).z - getItem(b).z)
-              .map(id => (
-                <Container 
-                  key={`layer-${id}`} 
-                  alpha={current_layer === id ? 1 : inactive_alpha}
-                >
-                  {maps[current_map].nodes[id]
-                  .sort((a, b) => {
-                    if (!selectedItem || selectedItem.type !== "node")
-                      return 0
-                    else if (selectedItem.id === b.id) 
-                      return -1
-                    else if (selectedItem.id === a.id) 
-                      return 1
+          {getLayer("nodes")
+            .map(id => (
+              <Container 
+                key={`layer-${id}`} 
+                alpha={current_layer === id ? 1 : inactive_alpha}
+              >
+                {maps[current_map].nodes[id]
+                .sort((a, b) => {
+                  if (!selectedItem || selectedItem.type !== "node")
                     return 0
-                  })
-                  .map((node)=> (
-                    <Node 
-                      {...node}
-                      canvasKey={node.key}
-                      canvas={{ ...canvas, camera }}
-                      sidebar={sidebar}
-                      item={getItem(node.id)}
-                      size={Math.max(6, getItem(node.id).connect_type === "none" ? layer.snap.x : 6)}
-                      key={node.key}
-                      disabled={current_layer !== id} 
-                      selected={selectedItem && selectedItem.id === node.id}
-                      editing={selectedItem && pathMode && node.id === selectedItem.id}
-                      onEdgeClick={(start, end) => toggleNodeEdge(node, start, end)}
-                      onPointDelete={(i) => deleteNodePoint(node, i)}
-                      onDelete={() => deleteNode(node.key)}
-                    />
-                  ))}
-                  {node_parts.length > 0 && selectedItem && (
-                    <Node
-                      key={`incomplete-${selectedItem.id}`}
-                      canvasKey={`incomplete-${selectedItem.id}`}
-                      canvas={{ ...canvas, camera }}
-                      sidebar={sidebar}
-                      id={selectedItem.id}
-                      item={selectedItem}
-                      node={{
-                        edges:[],
-                        points: node_parts
-                      }}
-                      selected={true}
-                      size={Math.max(6, selectedItem.connect_type === "none" ? layer.snap.y : 6)}
-                      incomplete
-                      editing={false}
-                      x={0}
-                      y={0}
-                      onEdgeClick={(start, end) => console.log(start, end)}
-                      onPointDelete={() => deleteNodePoint()}
-                      onDelete={() => null}
-                    />
-                  )}
-                </Container>
-              ))}
+                  else if (selectedItem.id === b.id) 
+                    return -1
+                  else if (selectedItem.id === a.id) 
+                    return 1
+                  return 0
+                })
+                .filter(node => getItem(node.id))
+                .map((node)=> (
+                  <Node 
+                    {...node}
+                    canvasKey={node.key}
+                    canvas={{ ...canvas, camera }}
+                    sidebar={sidebar}
+                    item={getItem(node.id)}
+                    size={Math.max(6, getItem(node.id).connect_type === "none" ? layer.snap.x : 6)}
+                    key={node.key}
+                    disabled={current_layer !== id} 
+                    selected={selectedItem && selectedItem.id === node.id}
+                    editing={selectedItem && pathMode && node.id === selectedItem.id}
+                    onEdgeClick={(start, end) => toggleNodeEdge(node, start, end)}
+                    onPointDelete={(i) => deleteNodePoint(node, i)}
+                    onDelete={() => deleteNode(node.key)}
+                  />
+                ))}
+                {node_parts.length > 0 && selectedItem && (
+                  <Node
+                    key={`incomplete-${selectedItem.id}`}
+                    canvasKey={`incomplete-${selectedItem.id}`}
+                    canvas={{ ...canvas, camera }}
+                    sidebar={sidebar}
+                    id={selectedItem.id}
+                    item={selectedItem}
+                    node={{
+                      edges:[],
+                      points: node_parts
+                    }}
+                    selected={true}
+                    size={Math.max(6, selectedItem.connect_type === "none" ? layer.snap.y : 6)}
+                    incomplete
+                    editing={false}
+                    x={0}
+                    y={0}
+                    onEdgeClick={(start, end) => console.log(start, end)}
+                    onPointDelete={() => deleteNodePoint()}
+                    onDelete={() => null}
+                  />
+                )}
+              </Container>
+            ))}
         </Container>
         {/* overlay ui */}
         <Container>
-          <BitmapText  
+          <Text  
             key="info"
             x={width - 10}
             y={height - 10}
@@ -1111,12 +1160,12 @@ export const Canvas = () => {
               !selectedItem || !["node", "label", "tileset"].includes(selectedItem.type) ? '' :
               `${selectedItem.name}${pathMode && selectedItem.connect_type !== "none" ? ".edges" : ''}`,
               // map.layer
-              `${getItem(current_map).name}.${getItem(current_layer).name}`
+              `${map.name}.${layer.name}`
             ].join('\n')}
             style={{ fontName: "proggy_scene", fontSize: 32, align: "right" }}
             anchor={[1, 1]}
           />
-          <BitmapText  
+          <Text  
             key="coords"
             x={mousePos.x + 20}
             y={mousePos.y + 20}

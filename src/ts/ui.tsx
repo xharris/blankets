@@ -496,4 +496,9 @@ export const stringifyJSON:IStringifyJson = (data, options) => {
 
 export const { isDev } = remoteRequire("./util.js")
 
+export const dispatchEvent = (name:string, detail:CustomEventInit) => {
+  const event = new CustomEvent(name, detail)
+  window.dispatchEvent(event)
+}
+
 export { css, cx }

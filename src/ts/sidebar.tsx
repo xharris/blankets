@@ -1,5 +1,5 @@
 import { MouseEvent, useCallback, useEffect, useState } from "react"
-import { FC, HTMLDiv, cx, css, bem, Button, Icon, Electron, useTheme, capitalize, css_popbox, ObjectAny, ValueOf } from "ts/ui"
+import { FC, HTMLDiv, cx, css, bem, Button, Icon, Electron, useTheme, capitalize, css_popbox, ObjectAny, ValueOf, dispatchEvent } from "ts/ui"
 import { nanoid } from 'nanoid'
 import tinycolor from "tinycolor2"
 import { useProject } from "ts/project"
@@ -165,7 +165,7 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
     let num = 0
     while (items.some(i => i.name === `${opts.type}${num}`))
       num++
-    const new_item = {
+    const new_item:ItemOptions = {
       id: nanoid(),
       type: type_lower,
       name: `${opts.type}${num}`,
@@ -176,12 +176,16 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
     setItemsDirty(true)
     if (onItemAdd)
       onItemAdd({...new_item})
+    return new_item
   }, [items, defaultItem, onItemAdd, update, setItemsDirty, saveHistory])
 
   const showAddMenu = useCallback(() => {
     Electron.menu(types.map(type => ({
       label: capitalize(type),
-      click: () => addItem({ type })
+      click: () => {
+        const new_item = addItem({ type })
+        dispatchEvent("sidebar.item.add", { detail: { type:new_item.type, id:new_item.id } })
+      }
     })))
   }, [types, addItem])
 
@@ -223,6 +227,7 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
                 if (onItemDelete)
                   onItemDelete(item.id)
                 update({ items:items.filter(i => i.id !== item.id) })
+                dispatchEvent("sidebar.item.delete", { detail: { type:item.type, id:item.id } })
                 setItemsDirty(true)
                 saveHistory()
               }}

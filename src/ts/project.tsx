@@ -313,6 +313,7 @@ export const useProject = () => {
         })))
           .then(tilesets => Promise.all(
             Object.entries(all_data.canvas.maps)
+              .filter(([map]) => getItem(map))
               .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), "return "+stringifyJSON(formatMap(data as Map, tilesets), stringify_opts)))
           ))
       })
@@ -345,11 +346,11 @@ export const useProject = () => {
           // load blanke.json
           .then(load_data => loadProject(new_path, load_data))
       } else {
-        update({ path:null, loading:false })
+        update({ loading:false })
       }
     })
     .catch(() => {
-      update({ path:null, loading:false })
+      update({ loading:false })
     })
   }, [loadProject, update])
 
