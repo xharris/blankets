@@ -23,7 +23,8 @@ app.whenReady().then(() => {
       contextIsolation: false,
       enableRemoteModule: true,
       backgroundThrottling: false,
-      webSecurity: false 
+      webSecurity: false,
+      nodeIntegrationInWorker: true
     }
   })
 

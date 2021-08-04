@@ -19,7 +19,9 @@ export interface IItemBody extends ItemOptions {
   setImages?: (id: string, images: string[]) => void
 }
 
-export interface FCItemBody<T=IItemBody> extends FC<T> { }
+export interface FCItemBody<T=IItemBody> extends FC<T> { 
+  updateItem?: (id: string, data: Partial<T>) => void,
+}
 
 interface IItem extends ItemOptions, HTMLDiv {
   isChild?: boolean,

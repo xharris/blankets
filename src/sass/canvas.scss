@@ -5,4 +5,19 @@
   &--dragging {
     cursor: all-scroll;
   }
+
+  &__label-editor {
+    position: absolute;
+    padding: 3px;
+  }
+
+  &__label-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    > div {
+      padding: 4px;
+    }
+  }
 }

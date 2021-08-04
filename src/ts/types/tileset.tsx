@@ -60,7 +60,7 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
       ...selectedTiles,
       [idx]: v
     })
-    selectItem(id)
+    selectItem(id, true)
   }, [setSelectedTiles, selectedTiles, image, selectItem, id])
 
   useEffect(() => {
@@ -138,7 +138,7 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
         options={{
           image: { 
             type:"select", 
-            values: assets.image.map(img => [img, basename(img)])
+            values: assets.image.map((img:string) => [img, basename(img)])
           },
           size: {
             type: "number",

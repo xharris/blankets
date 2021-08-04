@@ -92,6 +92,7 @@
 
   &__select-input {
     width: 100%;
+    height: 18px;
   }
 
   &--labeled > * {
@@ -104,6 +105,10 @@
 .uiform {
   > *:not(:last-child):not(:empty) {
     padding-bottom: 3px;
+  }
+
+  .uibutton {
+    height: 20px;
   }
 
   &__group {

@@ -5,11 +5,11 @@ import { Tileset } from "ts/types/tileset"
 import { Layer } from "ts/types/layer"
 import { Map } from "ts/types/map"
 import { Node } from "ts/types/node"
+import { Label } from "ts/types/label"
 import { Canvas } from "ts/canvas"
 import { GlobalCtxProvider } from 'ts/globalcontext'
 import { SaveCtxProvider } from 'ts/savecontext'
 
-import './App.css';
 import "sass/index.scss";
 import { useEffect } from 'react';
 
@@ -71,7 +71,8 @@ const AppBody = () => (
         layer: Layer,
         tileset: Tileset,
         map: Map,
-        node: Node
+        node: Node,
+        label: Label
       }}
     />
     <Canvas />

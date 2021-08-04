@@ -3,23 +3,23 @@ import { Electron, ObjectAny, ObjectGet, stringifyJSON } from "ts/ui"
 import { basename, join, relative } from "path"
 import { useCallback, useEffect } from "react"
 // import { FSWatcher, watch } from "chokidar"
-import { ensureDir, pathExists, readFile, writeFile } from "fs-extra"
+import { ensureDir, pathExists, readFile, Stats, writeFile, stat } from "fs-extra"
 import { useSaveCtx } from "ts/savecontext"
 import { useUndo } from "ts/undo"
 import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { Map } from "ts/canvas"
-import { LabelBody } from "./types/label"
+import { LabelBody } from "ts/types/label"
+import { FSWatcher, watch } from "chokidar"
 
-
-// const EXTENSIONS = {
-//   image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
-//   code: ["lua"],
-//   audio: [
-//     "wav", "mp3", "ogg", "oga", "ogv", "699", "amf", "ams", "dbm", "dmf", "dsm",
-//     "far", "it", "j2b", "mdl", "med", "mod", "mt2", "mtm", "okt", "psm", "s3m", "stm",
-//     "ult", "umx", "xm", "abc", "mid", "pat", "flac"
-//   ]
-// }
+const EXTENSIONS = {
+  image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
+  code: ["lua"],
+  audio: [
+    "wav", "mp3", "ogg", "oga", "ogv", "699", "amf", "ams", "dbm", "dmf", "dsm",
+    "far", "it", "j2b", "mdl", "med", "mod", "mt2", "mtm", "okt", "psm", "s3m", "stm",
+    "ult", "umx", "xm", "abc", "mid", "pat", "flac"
+  ]
+}
 
 // type AssetAction = {
 //   type: "image" | "code" | "audio",
@@ -56,33 +56,29 @@ export const useProject = () => {
   //     })
   // }, [assets, update])
 
-  // const fileUpdate = useCallback((name: any, stat: Stats) => {
-  //   if (stat.isFile()) {
-  //     // const filename = basename(name)
-  //     // console.log(name)
-  //     // update assets
-  //     Object.typedKeys(EXTENSIONS)
-  //       // only get extension types matching this file
-  //       .filter((type) => EXTENSIONS[type].some(ext => name.endsWith(`.${ext}`)))
-  //       // add them to asset list
-  //       .forEach((type) => {
-  //         update(prev => {
-  //           // if (prev.assets[type] && !prev.assets[type].includes(name))
-  //           // console.log(type, name)
-  //           return ({
-  //             ...prev, 
-  //             assets: {
-  //               ...prev.assets,
-  //               [type]: prev.assets[type] && prev.assets[type].includes(name) ? prev.assets[type] : [
-  //                 ...prev.assets[type],
-  //                 name
-  //               ]
-  //             }
-  //           })
-  //         })
-  //       })
-  //   }
-  // }, [])
+  const fileUpdate = useCallback((files:[name: string, stat: Stats][]) => {
+    const new_assets = { ...assets }
+    files.forEach(([name, stat]) => {
+      if (stat.isFile()) {
+        // const filename = basename(name)
+        // console.log(name)
+        // update assets
+        Object.typedKeys(EXTENSIONS)
+          // only get extension types matching this file
+          .filter((type) => EXTENSIONS[type].some(ext => name.endsWith(`.${ext}`)))
+          // add them to asset list
+          .forEach((type) => {
+            // addAsset(type, name)
+            if (!(new_assets[type] && new_assets[type].includes(name))) {
+              new_assets[type].push(name)
+            }
+          })
+      }
+    })
+    update({
+      assets: new_assets
+    })
+  }, [update, assets])
 
   const saveProject = useCallback(() => {
     if (all_data && path) {
@@ -175,14 +171,15 @@ export const useProject = () => {
               tiles.forEach(tile => {
                 const [imagewidth] = image_size[tile.tile.path]
                 const [chunkx, chunky] = [
-                  Math.floor(tile.y / (layer.snap.x * chunk_size[0])) - (tile.x < 0 ? layer.snap.x : 0),
-                  Math.floor(tile.x / (layer.snap.y * chunk_size[1])) - (tile.y < 0 ? layer.snap.y : 0)
+                  Math.floor(tile.x / (layer.snap.x * chunk_size[0])) - (tile.x < 0 ? layer.snap.x : 0),
+                  Math.floor(tile.y / (layer.snap.y * chunk_size[1])) - (tile.y < 0 ? layer.snap.y : 0)
                 ]
-                let chunk = chunks.find(c => chunkx >= c.x && chunky >= c.y && chunkx < c.width && chunky < c.height)
+                let chunk = chunks.find(c => chunkx === c.x && chunky === c.y)
                 if (!chunk) {
                   chunk = { x:chunkx, y:chunky, width:chunk_size[0], height:chunk_size[1], data:(new Array(chunk_size[0] * chunk_size[1])).fill(0) }
                   chunks.push(chunk)
                 }
+                console.log(chunkx, chunky, tile.x, tile.y)
                 const [chunk_tilex, chunk_tiley] = [
                   Math.floor(tile.x / layer.snap.x),
                   Math.floor(tile.y / layer.snap.y)
@@ -208,7 +205,7 @@ export const useProject = () => {
                 ...layerProperties(id),
                 properties: {},
                 encoding: "lua",
-                chunks
+                chunks: chunks.map(c => ({ ...c, x:c.x * chunk_size[0], y:c.y * chunk_size[1] }))
               }
             }),
             // depth probably doesn't need to be sorted with tiles
@@ -364,24 +361,37 @@ export const useProject = () => {
   }, [savedata, saveProject])
   
   useEffect(() => {
-    // let watcher:FSWatcher
-    // if (path) {
-    //   // watch the directory for assets
-    //   watcher = watch(path, {
-    //     ignored: [
-    //       "**/node_modules/**",
-    //       /(^|[\/\\])\../
-    //     ]
-    //   })
-    //   watcher.on('add', fileUpdate)
-    //   watcher.on('change', fileUpdate)
-    // }
+    let watcher:FSWatcher
+    if (path) {
+      // watch the directory for assets
+      watcher = watch(path, {
+        ignored: [
+          "**/node_modules/**",
+          /(^|[\/\\])\../,
+          `**/${basename(path)}/engine/**`,
+          `**/${basename(path)}/plugins/**`
+        ]
+      })
+      watcher.on('ready', () => {
+        const filenames = Object.entries(watcher.getWatched()).reduce<string[]>((arr, [ path, names ]) => {
+          names.forEach(name => {
+            arr.push(join(path, name))
+          })
+          return arr
+        }, [])
 
-    // return () => {
-    //   if (watcher)
-    //     watcher.close()
-    //   watcher = null
-    // }
+        Promise.all(filenames.map(f => stat(f).then(stat => [f, stat] as [string, Stats])))
+          .then(fileUpdate)
+        watcher.on('add', (f, stat) => fileUpdate([[f,stat]]))
+        watcher.on('change', (f, stat) => fileUpdate([[f,stat]]))
+      })
+    }
+
+    return () => {
+      if (watcher)
+        watcher.close()
+      watcher = null
+    }
   }, [path])
 
   return { 

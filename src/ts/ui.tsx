@@ -129,13 +129,13 @@ export const Button: FC<IButton> = ({ className, text, icon, color = "#212121", 
 )
 
 interface IInput extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string,
+  label?: string | boolean,
   inputClassName?: string,
   chooseFileOptions?:chooseFileOptions,
   onFile?: (v:Electron.OpenDialogReturnValue) => any,
   onError?: (...args:any[]) => void,
   icon?: string,
-  values?: [string, string][]
+  values?: [string, string][] | string[] | string[][]
 }
 const bss_input = bem("uiinput")
 export const Input: FC<IInput> = ({ 
@@ -148,14 +148,14 @@ export const Input: FC<IInput> = ({
   chooseFileOptions, 
   onFile = () => {},
   onError,
-  icon = "file",
+  icon,
   values,
   defaultValue,
   ...props 
 }) => {
   const [value, setValue] = useState<string[]>([].concat(defaultValue).filter(p => p))
   
-  return (
+  return type === "button" ? <Button icon={icon} {...props} /> : (
     <label
       className={cx(bss_input({ labeled: !!label }), className)}
       title={title}
@@ -165,7 +165,7 @@ export const Input: FC<IInput> = ({
         <Button
           className={cx(bss_input("file-input"), inputClassName)}
           text={value.length > 0 ? value.map(p => basename(p)).join(', ') : "Choose file..."}
-          icon={icon}
+          icon={icon || "file"}
           onClick={() => 
             Electron.chooseFile(chooseFileOptions)
               .then(result => {
@@ -184,7 +184,8 @@ export const Input: FC<IInput> = ({
         >
           <option key="_default" value="_DEFAULT_" disabled hidden>{props.placeholder || "..."}</option>
           {values.map(v => {
-            const [value, label] = v
+            const value = Array.isArray(v) ? v[0] : v 
+            const label = Array.isArray(v) ? v[1] : v
             return <option key={value} value={value}>{label}</option>
           })}
         </select>
@@ -202,6 +203,8 @@ export const Input: FC<IInput> = ({
 
 type FormCustomRender = () => {}
 
+export type FormOptions = ObjectAny<FormOption>
+
 interface FormOption extends IInput {
   columns?: number,
   names?: string[],
@@ -211,7 +214,7 @@ interface FormOption extends IInput {
 type IForm = Omit<FormHTMLAttributes<HTMLFormElement>, 'defaultValue' | 'onChange'> & {
   defaultValue: ObjectAny,
   order?: (string|FormCustomRender)[],
-  options?: { [key:string]:FormOption },
+  options?: FormOptions,
   onChange: (e:React.ChangeEvent<HTMLInputElement>, name:string, subname?:string) => void,
   onFile?: (v:Electron.OpenDialogReturnValue, name:string, subname?:string) => any
 }
@@ -249,7 +252,7 @@ export const Form: FC<IForm> = ({ className, defaultValue, order, options = {}, 
             className={bss_form("group")}
             key={`group-${name}`}
           >
-            <div className={bss_form("group-label")}>{opts.label || capitalize(name)}</div>
+            {opts.label !== false && <div className={bss_form("group-label")}>{opts.label || capitalize(name)}</div>}
             <div className={bss_form("subgroups")}>
               {subnames.map((group, g) => 
                 <div
@@ -258,7 +261,7 @@ export const Form: FC<IForm> = ({ className, defaultValue, order, options = {}, 
                 > 
                   {group.map((subname) => {
                     const suboptions = opts.options ? { ...opts, label:null, ...opts.options[subname] } : opts
-                    
+                  
                     return (
                       <Input 
                         className={bss_form("input")}

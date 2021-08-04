@@ -1,5 +1,5 @@
 import { ComponentProps, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { bem, useWindowSize, ObjectAny, ObjectGet, FC, useEvent, useTheme } from "ts/ui"
+import { bem, Form, useWindowSize, ObjectAny, ObjectGet, FC, useEvent, useTheme, cx, css, css_popbox, Button } from "ts/ui"
 import { useGlobalCtx } from "ts/globalcontext"
 import * as PIXI from "pixi.js"
 import { Stage, Container, Graphics, BitmapText, Sprite, useApp } from "@inlet/react-pixi"
@@ -7,6 +7,7 @@ import { useSaveCtx } from "ts/savecontext"
 import { useProject } from "ts/project"
 import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { nanoid } from 'nanoid'
+import { LabelBody } from "ts/types/label"
 
 PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST
 PIXI.settings.ROUND_PIXELS = true
@@ -16,7 +17,10 @@ type TileCropInfo = { path:string, x:number, y:number, w:number, h:number }
 type NodeInfo = { points:Point[], edges:Edge[], label?:string }
 
 type Edge = [Point, Point, string?]
-type Point = { x:number, y:number, label?:string }
+type Point = { x:number, y:number, label?:{
+  [key:string]:any,
+  _id:string
+} }
 
 export type Map = {
   camera: Point,
@@ -28,7 +32,13 @@ type CanvasGlobalCtx = {
   tiles: TileCropInfo[],
   node_parts: Point[],
   selectedNode: string,
-  draggingNode: boolean
+  draggingNode: boolean,
+  editLabel: {
+    canvasKey: string,
+    node: NodeInfo,
+    point: number,
+    label: Partial<LabelBody>
+  }
 }
 
 type CanvasCtx = { 
@@ -51,6 +61,13 @@ const sameEdge = (edge1:Edge, edge2:Edge) => (
     edge1[0].x === edge2[1].x && edge1[0].y === edge2[1].y
   )
 )
+const containsPoint = (edge:Edge, point:Point) => (
+  (edge[0].x === point.x && edge[0].y === point.y) || 
+  (edge[1].x === point.x && edge[1].y === point.y)
+)
+const pointEquals = (pt1:Point, pt2:Point) => (
+  pt1.x === pt2.x && pt1.y === pt2.y 
+)
 const edgeKey = (edge:Edge) => `${edge[0].x},${edge[0].y},${edge[1].x},${edge[1].y}`
 const lineStyle = {
   join: PIXI.LINE_JOIN.ROUND
@@ -60,26 +77,15 @@ const bss = bem("canvas")
 
 export const useCanvasCtx = () => {
   const { saveHistory } = useProject()
-  const { data:{ tiles, node_parts, selectedNode, draggingNode }, update:updateGlobal } = useGlobalCtx<CanvasGlobalCtx>("canvas", { 
+  const { data:{ tiles, node_parts, selectedNode, draggingNode, editLabel }, update:updateGlobal } = useGlobalCtx<CanvasGlobalCtx>("canvas", { 
     tiles:[], 
     node_parts:[],
     selectedNode: "",
-    draggingNode: false
+    draggingNode: false,
+    editLabel: null
   })
   const { data:{ maps = {}, current_layer, current_map }, update } = useSaveCtx<CanvasCtx>("canvas")
   const { selectedItem, getItem, getItems } = useSidebarCtx()
-
-  useEffect(() => {
-    PIXI.BitmapFont.from("proggy_scene", {
-      fontFamily: "ProggySquare",
-      fontSize: 16,
-      fill: 0xFAFAFA,
-      stroke: 0x212121,
-      strokeThickness: 2
-    }, {
-      chars: PIXI.BitmapFont.ASCII
-    })
-  }, [])
 
   const updateMap:IUpdateMap = useCallback((map, layer, type, value) => {
     update({ 
@@ -95,6 +101,12 @@ export const useCanvasCtx = () => {
       } 
     })
   }, [update, maps])
+
+  const setEditLabel = useCallback((canvasKey?:string, node?:NodeInfo, point?:number, labelid?:string) => {
+    updateGlobal({
+      editLabel: canvasKey ? { canvasKey, node, point, label:getItem(labelid) } : null
+    })
+  }, [updateGlobal, getItem])
 
   const setDraggingNode = useCallback((v:boolean) => 
     updateGlobal({
@@ -397,6 +409,8 @@ export const useCanvasCtx = () => {
     node_parts,
     selectedNode,
     draggingNode,
+    editLabel,
+    setEditLabel,
     onPlace,
     setCamera,
     setSelectedTiles, 
@@ -462,12 +476,14 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, o
       x={x}
       y={y}
       interactive={!disabled}
-      pointerover={onClick}
-      pointerdown={e => {
-        if (!e.data.originalEvent.altKey && e.data.button === 2) {
+      pointerover={e => {
+        if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
           onDelete(e)
-        } else {
-          onClick(e)
+        }
+      }}
+      pointerdown={e => {
+        if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
+          onDelete(e)
         }
       }}
       {...props}
@@ -555,12 +571,13 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
   const [edges, setEdges] = useState<Edge[]>([])
   const theme = useTheme()
   const { points, edges:nodeEdges } = node
-  const { getItem, selectItem } = sidebar
+  const { getItem, selectItem, selectedItem } = sidebar
   const { 
     camera, current_layer, selectedNode,  
-    selectMapNode, updateNode, setDraggingNode 
+    selectMapNode, updateNode, setDraggingNode, setEditLabel
   } = canvas
   const [dragging, setDragging] = useState(-1)
+  const [hoveringPoint, setHoveringPoint] = useState<ObjectAny>({})
   
   const extra_hit = size < 10 ? 10 : size
   const can_select_map_node = item.connect_type !== "none"
@@ -570,29 +587,37 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
   useEvent("mousemove", (e:MouseEvent) => {
     if (dragging > -1 && layer) {
       const [x,y] = [e.clientX - camera.x, e.clientY - camera.y]
-      const new_pos = layer ? {
+      const new_point = layer ? {
         x: x - (x % layer.snap.x),
         y: y - (y % layer.snap.y)
       } : {
         x, y
       }
+      const old_point = points[dragging]
+      const can_move_point = points.filter(p => pointEquals(p, new_point)).length === 0
       
       updateNode(canvasKey, {
         node: {
           ...node,
+          edges: !can_move_point ? nodeEdges : nodeEdges.map((edge) => {
+            if (containsPoint(edge, old_point)) {
+              if (pointEquals(edge[0], old_point))
+                return [new_point, edge[1]]
+              if (pointEquals(edge[1], old_point))
+                return [edge[0], new_point]
+            }
+            return edge 
+          }),
           points: points.map((pt, i) => {
-            if (i === dragging) {
-              return {
-                x: new_pos.x,
-                y: new_pos.y
-              }
+            if (i === dragging && can_move_point) {
+              return new_point
             }
             return pt
           })
         }
       })
     }
-  }, [dragging, updateNode, layer, canvasKey, points])
+  }, [dragging, updateNode, layer, canvasKey, points, nodeEdges])
 
   useEvent("mouseup", () => {
     setDraggingNode(false)
@@ -617,6 +642,21 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
     }
   }, [item, points, setEdges])
 
+  const getHoverPointEvents = useCallback((i:number) => ({
+    pointerover: () => {
+      setHoveringPoint({
+        ...hoveringPoint,
+        [i]:true
+      })
+    },
+    pointerout: () => {
+      setHoveringPoint({
+        ...hoveringPoint,
+        [i]:false
+      })
+    }
+  }), [setHoveringPoint, hoveringPoint])
+
   const drawPoint = useCallback((g:PIXI.Graphics) => {
     g.clear()
     const color = parseInt(theme.color.type.node, 16)
@@ -631,6 +671,17 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
     if (item.connect_type === "none")
       g.drawRect(-2, -2, 4, 4)
   }, [item, theme, incomplete, size, selectedNode, canvasKey])
+
+  if (!PIXI.BitmapFont.available["proggy_scene"])
+    PIXI.BitmapFont.from("proggy_scene", {
+      fontFamily: "ProggySquare",
+      fontSize: 16,
+      fill: 0xFAFAFA,
+      stroke: 0x212121,
+      strokeThickness: 2
+    }, {
+      chars: PIXI.BitmapFont.ASCII
+    })
 
   return (
     <Container
@@ -661,6 +712,7 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
                   }
                 })
               }
+              e.stopPropagation()
             }
           }}
           active={true}
@@ -689,32 +741,89 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
           />
         ))
       )}
-      {points.map((point, i) => (
+      {points.map((point, i) => [
         <Graphics
           key={`${point.x},${point.y},${i}`}
           x={item.connect_type === "none" ? point.x : point.x - (size/2)}
           y={item.connect_type === "none" ? point.y : point.y - (size/2)}
           interactive={true}
           hitArea={new PIXI.Rectangle(0, 0, extra_hit, extra_hit)}
+          {...getHoverPointEvents(i)}
           pointerdown={e => {
             if (!e.data.originalEvent.altKey && e.data.button === 2) {
-              if (points.length > 1)
-                onPointDelete(i)
-              else 
-                onDelete(e)
+              // delete this point
+              if (!selectedItem || selectedItem.type === "node") {
+                if (points.length > 1)
+                  onPointDelete(i)
+                else 
+                  onDelete(e)
+              }
+              // remove the label 
+              else if (selectedItem.type === "label") {
+                updateNode(canvasKey, {
+                  node: {
+                    ...node,
+                    points: points.map((pt, j) => {
+                      if (j === i)
+                        return { ...pt, label: undefined }
+                      return pt
+                    })
+                  }
+                })
+              }
             }
             if (e.data.originalEvent.ctrlKey && e.data.button === 0 && can_select_map_node) {
               selectMapNode(canvasKey)
               selectItem(id, true)
             }
             if (e.data.button === 0) {
-              setDraggingNode(true)
-              setDragging(i)
+              // start dragging node
+              if (!selectedItem || selectedItem.type === "node") {
+                setDraggingNode(true)
+                setDragging(i)
+              }
+              // add label 
+              else if (selectedItem.type === "label") {
+                const label_data:Point["label"] = { _id: selectedItem.id }
+                selectedItem.field_ids.forEach((id:string) => {
+                  label_data[id] = null
+                })
+                updateNode(canvasKey, {
+                  node: {
+                    ...node,
+                    points: points.map((pt, j) => {
+                      if (j === i)
+                        return { ...pt, label: label_data }
+                      return pt
+                    })
+                  }
+                })
+              }
             }
           }}
           draw={drawPoint}
-        />
-      ))}
+        />,
+        point.label && (
+          <BitmapText
+            key={`${point.x},${point.y},${i},text`}
+            x={item.connect_type === "none" ? point.x + (size/2) : point.x}
+            y={item.connect_type === "none" ? point.y + size : point.y + (size/2)}
+            text={Object.values(point.label).length <= 1 || !hoveringPoint[i]  ? "..." : Object.entries(point.label).filter(([k]) => k !== "_id").map(([_,v]) => {
+              return v
+            }).join('\n')}
+            style={{ fontName: "proggy_scene", fontSize: 16, align: "left" }}
+            anchor={[0.5,0]}
+            interactive={true}
+            {...getHoverPointEvents(i)}
+            pointerdown={e => {
+              if (!e.data.originalEvent.altKey && e.data.button === 0) {
+                // open label editor
+                setEditLabel(canvasKey, node, i, point.label._id)
+              }
+            }}
+          />
+        )
+      ])}
       {points.length > 0 && (
         <BitmapText
           x={item.connect_type === "none" ? points[0].x + (size/2) : points[0].x}
@@ -749,8 +858,9 @@ export const Canvas = () => {
   const { 
     camera:mapCamera, setCamera:setMapCamera, 
     current_layer, maps, current_map, node_parts, draggingNode,
+    editLabel, 
     onPlace, deleteTile, finishNode, resetNodePath, deleteNode, deleteNodePoint, toggleNodeEdge,
-    selectMapNode
+    selectMapNode, updateNode, getNode, setEditLabel
   } = canvas
   const [_, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({x:0, y:0})
@@ -758,6 +868,7 @@ export const Canvas = () => {
   const { getItem, selectedItem } = sidebar
   const [pathMode, setPathMode] = useState(false)
   const [lastMap, setLastMap] = useState("")
+  const theme = useTheme()
 
   const can_drag_camera = maps && current_map
   const layer = getItem(current_layer)
@@ -871,20 +982,16 @@ export const Canvas = () => {
     y: presnap_mouse.y - (presnap_mouse.y % layer.snap.y)
   } : { ...mouse }
 
-  const inactive_alpha = 0.35
+  const inactive_alpha = 0.3
 
   return !(current_map && current_layer) ? null : (
     <div 
       className={bss({ dragging })}
-      onMouseDown={e => {
+      onMouseDown={() => {
         setFocused(true)
-        if (e.buttons === 1 && !pathMode && !draggingNode)
-          onPlace(snapped_mouse.x, snapped_mouse.y)
       }}
-      onMouseOver={e => {
+      onMouseOver={() => {
         setFocused(true)
-        if (e.buttons === 1 && !pathMode)
-          onPlace(snapped_mouse.x, snapped_mouse.y)
       }}
       onMouseOut={() => {
         setFocused(false)
@@ -895,6 +1002,14 @@ export const Canvas = () => {
         height={height}
         options={{
           backgroundColor: 0xEEEEEE,
+        }}
+        onPointerDown={e => {
+          if (e.buttons === 1 && !pathMode && !draggingNode)
+            onPlace(snapped_mouse.x, snapped_mouse.y)
+        }}
+        onPointerMove={e => {
+          if (e.buttons === 1 && !pathMode && !draggingNode)
+            onPlace(snapped_mouse.x, snapped_mouse.y)
         }}
       >
         <PointerLock enabled={lockPointer} />
@@ -954,9 +1069,7 @@ export const Canvas = () => {
                       selected={selectedItem && selectedItem.id === node.id}
                       editing={selectedItem && pathMode && node.id === selectedItem.id}
                       onEdgeClick={(start, end) => toggleNodeEdge(node, start, end)}
-                      onPointDelete={(i) => {
-                        deleteNodePoint(node, i)
-                      }}
+                      onPointDelete={(i) => deleteNodePoint(node, i)}
                       onDelete={() => deleteNode(node.key)}
                     />
                   ))}
@@ -987,31 +1100,96 @@ export const Canvas = () => {
               ))}
         </Container>
         {/* overlay ui */}
-        {PIXI.BitmapFont.available["proggy_scene"] && (
-          <Container>
-            <BitmapText  
-              x={mousePos.x + 20}
-              y={mousePos.y + 20}
-              text={`${snapped_mouse.x}, ${snapped_mouse.y}`}
-              style={{ fontName: "proggy_scene", fontSize: 16, align: "left" }}
-            />
-            <BitmapText  
-              x={width - 10}
-              y={height - 10}
-              alpha={0.5}
-              text={[
-                // selected item 
-                !selectedItem || !["node", "label", "tileset"].includes(selectedItem.type) ? '' :
-                `${selectedItem.name}${pathMode && selectedItem.connect_type !== "none" ? ".edges" : ''}`,
-                // map.layer
-                `${getItem(current_map).name}.${getItem(current_layer).name}`
-              ].join('\n')}
-              style={{ fontName: "proggy_scene", fontSize: 32, align: "right" }}
-              anchor={[1, 1]}
-            />
-          </Container>
-        )}
+        <Container>
+          <BitmapText  
+            key="info"
+            x={width - 10}
+            y={height - 10}
+            alpha={0.5}
+            text={[
+              // selected item 
+              !selectedItem || !["node", "label", "tileset"].includes(selectedItem.type) ? '' :
+              `${selectedItem.name}${pathMode && selectedItem.connect_type !== "none" ? ".edges" : ''}`,
+              // map.layer
+              `${getItem(current_map).name}.${getItem(current_layer).name}`
+            ].join('\n')}
+            style={{ fontName: "proggy_scene", fontSize: 32, align: "right" }}
+            anchor={[1, 1]}
+          />
+          <BitmapText  
+            key="coords"
+            x={mousePos.x + 20}
+            y={mousePos.y + 20}
+            text={`${snapped_mouse.x}, ${snapped_mouse.y}`}
+            style={{ fontName: "proggy_scene", fontSize: 16, align: "left" }}
+          />
+        </Container>
       </Stage>
+      {editLabel && (
+        <div
+          className={cx(bss("label-editor"), css_popbox(theme.color.type.node), css`
+            top: ${editLabel.node.points[editLabel.point].y + (layer.snap.y / 2) + camera.y}px;
+            left: ${editLabel.node.points[editLabel.point].x + (layer.snap.x / 2) + camera.x}px;
+          `)}
+          onBlur={() => setEditLabel()}
+        >
+          <div
+            className={bss("label-editor-header")}
+          >
+            <div>{editLabel.label.name}</div>
+            <Button 
+              icon="x"
+              onClick={() => setEditLabel()}
+            />
+          </div>
+          <Form
+            order={editLabel.label.field_ids}
+            defaultValue={editLabel.label.field_ids.reduce((obj, field) => {
+              return {
+                ...obj,
+                [field]: editLabel.node.points[editLabel.point].label[field]
+              }
+            }, {})}
+            options={editLabel.label.field_ids.reduce((obj, field) => {
+              return {
+                ...obj,
+                [field]: {
+                  label: editLabel.label.fields.find(f => f.id === field).name,
+                  type: editLabel.label.fields.find(f => f.id === field).type
+                }
+              }
+            }, {})}
+            onChange={(e, name) => {
+              const inode = getNode(editLabel.canvasKey, current_map, current_layer)
+              const ilabel = getItem(editLabel.label.id) as LabelBody
+              const label_type = ilabel.fields.find(f => f.id === name).type
+
+              console.log(ilabel, label_type)
+              
+              updateNode(editLabel.canvasKey, {
+                ...inode,
+                node: {
+                  ...inode.node,
+                  points: inode.node.points.map((pt, p) => {
+                    if (p === editLabel.point)
+                      return { 
+                        ...pt, 
+                        label:{ 
+                          ...inode.node.points[p].label, 
+                          [name]: 
+                            label_type === "number" ? e.target.valueAsNumber || null : 
+                            label_type === "array" ? e.target.value.split(',').map(v => v.trim()) : 
+                            e.target.value
+                        } 
+                      }
+                    return pt
+                  })
+                }
+              })
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }

@@ -14,7 +14,7 @@
     "electron-is-dev": "^2.0.0",
     "fs-extra": "^10.0.0",
     "nanoid": "^3.1.23",
-    "node-sass": "^5.0.0",
+    "node-sass": "^6.0.1",
     "pixi.js": "^6.0.4",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
@@ -47,14 +47,17 @@
     "html-loader": "^2.1.2",
     "raw-loader": "^4.0.2",
     "react-app-rewired": "^2.1.8",
+    "ts-loader": "^9.2.5",
     "tsconfig-paths-webpack-plugin": "^3.5.1",
-    "wait-on": "^6.0.0"
+    "wait-on": "^6.0.0",
+    "worker-loader": "^3.0.8"
   },
   "scripts": {
     "start": "cross-env BROWSER=none react-app-rewired start",
     "build": "yarn run build:react && yarn run build:electron",
     "build:electron": "electron-builder -c.extraMetadata.main=build/electron.js",
     "build:react": "react-app-rewired build",
+    "build:run": "./dist/linux-unpacked/test",
     "test": "react-app-rewired test",
     "eject": "react-app-rewired eject",
     "dev": "concurrently -k -n react,electron \"yarn start\" \"yarn run electron .\"",
