@@ -50,9 +50,12 @@ const AppBody = () => (
     <Nav />
     <Sidebar
       defaultItem={{
+        map: {
+          snap: { x:32, y:32 }
+        },
         layer: { 
           z: 0,
-          snap: { x:32, y:32 },
+          snap: {/* x, y */},
           offset: { x:0, y:0 }
         },
         tileset: {
@@ -67,6 +70,7 @@ const AppBody = () => (
       sort={{ 
         layer: (a,b) => a.z - b.z
       }}
+      noselect={["layer", "map"]}
       body={{
         layer: Layer,
         tileset: Tileset,

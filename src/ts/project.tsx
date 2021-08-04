@@ -340,7 +340,11 @@ export const useProject = () => {
             if (!exists) {
               return writeFile(json_path, JSON.stringify({}))
             } else {
-              return readFile(json_path, 'utf8').then(JSON.parse)
+              return readFile(json_path, 'utf8').then(data => {
+                if (data.length === 0)
+                  data = "{}"
+                return JSON.parse(data)
+              })
             }
           })
           // load blanke.json

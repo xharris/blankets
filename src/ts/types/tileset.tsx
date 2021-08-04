@@ -33,10 +33,12 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
   }, [imageSize, crop, setCroppedImageSize, size])
 
   useEffect(() => {
-    let img = new Image()
-    img.src = `file://${image}`
-    img.onload = () => {
-      setImageSize([img.width, img.height])
+    if (image) {
+      let img = new Image()
+      img.src = `file://${image}`
+      img.onload = () => {
+        setImageSize([img.width, img.height])
+      }
     }
   }, [image])
 
@@ -168,10 +170,10 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
               updateItem(id, { name: e.target.value }) 
               break
             case "size":
-              const new_size = { ...size, [subname]: e.target.valueAsNumber }
+              const new_size = { ...size, [subname]: Math.max(8, e.target.valueAsNumber) }
               updateItem(id, { 
                 size: new_size,
-                tilecount: Math.ceil((imageSize[0] / new_size.w) * (imageSize[1] / new_size.h))
+                tilecount: Math.ceil((imageSize[0] / new_size.w) * (imageSize[1] / new_size.h)) || 0
               })
               break 
             case "crop":

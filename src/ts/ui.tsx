@@ -58,7 +58,7 @@ export const pickBgColor = (fg: tinycolor.ColorInput, amount?: number) => {
   return fg_color.isLight() ? fg_color.darken(amount) : fg_color.brighten(amount)
 }
 
-export const css_popbox = (color:string, thickness=2, only_hover=false) => {
+export const css_popbox = (color:string, thickness=2, only_hover=false, show_border=false) => {
   const boxShadow = (c:string) => new Array(thickness).fill(0).map((_, i) => `${i}px ${i}px ${c}`).join(', ')
   const shadow_color = tinycolor(color).darken(25).toHexString()
   // const shadow = tinycolor(color).lighten(20).toHexString()
@@ -67,7 +67,7 @@ export const css_popbox = (color:string, thickness=2, only_hover=false) => {
   return css`
     color: ${text_color};
     background-color: ${bg_color};
-    border: ${Math.max(0, thickness-2)}px solid transparent;
+    border: ${Math.max(0, thickness-2)}px solid ${show_border ? shadow_color : "transparent"};
     border-radius: ${thickness}px;
     margin-right: ${thickness-1}px;
     // box-sizing: border-box;

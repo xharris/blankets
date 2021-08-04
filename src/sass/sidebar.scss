@@ -36,6 +36,10 @@
     }
   }
 
+  &__item--selected &__item-header span {
+    // text-decoration: underline;
+  }
+
   &__item-header {
     display: flex;
     align-items: center;

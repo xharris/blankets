@@ -35,13 +35,14 @@ const bss = bem("sidebar")
 const Item: FC<IItem> = ({ className, id, name, type, isChild, children, _images, onItemDelete, onItemClick, ...props }) => {
   const [expanded, setExpanded] = useState(false)
   const theme = useTheme()
+  const { selectedItem } = useSidebarCtx()
 
   const type_color = theme.color.type[type.toLowerCase()]
   const shadow_color = tinycolor(type_color).darken(25).toHexString()
 
   return (
     <div
-      className={cx(css_popbox(type_color, 3, !expanded), bss("item", { expanded }), className)}
+      className={cx(css_popbox(type_color, 3, !expanded, selectedItem && selectedItem.id === id), bss("item", { expanded }), className)}
       {...props}
     >
       <div
@@ -85,6 +86,7 @@ const Item: FC<IItem> = ({ className, id, name, type, isChild, children, _images
 
 interface ISidebar extends HTMLDiv {
   sort?: { [key: string]: string | ((a: ItemOptions, b: ItemOptions) => number) },
+  noselect?: string[],
   body?: { [key: string]: FCItemBody<any> },
   defaultItem?: { [key: string]: any },
   onItemClick?: IItem["onItemClick"],
@@ -128,12 +130,12 @@ export const useSidebarCtx = () => {
   }
 }
 
-export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onItemAdd, onItemDelete, ...props }: ISidebar) => {
+export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, noselect=[], onItemAdd, onItemDelete, ...props }: ISidebar) => {
   const theme = useTheme()
   // const [items, setItems] = useState<ItemOptions[]>([])
   const { isOpen, loading } = useProject()
   const [itemsDirty, setItemsDirty] = useState(true)
-  const { data:{ items }, update, selectItem } = useSidebarCtx()
+  const { data:{ items }, selectedItem, update, selectItem } = useSidebarCtx()
   const { saveHistory } = useProject()
   const types = Object.keys(theme.color.type)
 
@@ -221,7 +223,8 @@ export const Sidebar = ({ className, body, defaultItem, onItemClick, sort, onIte
               key={item.id}
               onItemClick={(e, item) => {
                 if (onItemClick) onItemClick(e, item)
-                selectItem(item.id)
+                if (!noselect.includes(item.type) || (selectedItem && selectedItem.id === item.id))
+                  selectItem(item.id)
               }}
               onItemDelete={() => {
                 if (onItemDelete)
