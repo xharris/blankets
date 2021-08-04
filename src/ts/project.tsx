@@ -2,27 +2,29 @@ import { useGlobalCtx } from "ts/globalcontext"
 import { Electron, ObjectAny, ObjectGet, stringifyJSON } from "ts/ui"
 import { basename, join, relative } from "path"
 import { useCallback, useEffect } from "react"
-import { watch } from "chokidar"
-import { ensureDir, FSWatcher, pathExists, readFile, Stats, writeFile } from "fs-extra"
+// import { FSWatcher, watch } from "chokidar"
+import { ensureDir, pathExists, readFile, writeFile } from "fs-extra"
 import { useSaveCtx } from "ts/savecontext"
 import { useUndo } from "ts/undo"
 import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { Map } from "ts/canvas"
+import { LabelBody } from "./types/label"
 
-const EXTENSIONS = {
-  image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
-  code: ["lua"],
-  audio: [
-    "wav", "mp3", "ogg", "oga", "ogv", "699", "amf", "ams", "dbm", "dmf", "dsm",
-    "far", "it", "j2b", "mdl", "med", "mod", "mt2", "mtm", "okt", "psm", "s3m", "stm",
-    "ult", "umx", "xm", "abc", "mid", "pat", "flac"
-  ]
-}
 
-type AssetAction = {
-  type: "image" | "code" | "audio",
-  path: string
-}
+// const EXTENSIONS = {
+//   image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
+//   code: ["lua"],
+//   audio: [
+//     "wav", "mp3", "ogg", "oga", "ogv", "699", "amf", "ams", "dbm", "dmf", "dsm",
+//     "far", "it", "j2b", "mdl", "med", "mod", "mt2", "mtm", "okt", "psm", "s3m", "stm",
+//     "ult", "umx", "xm", "abc", "mid", "pat", "flac"
+//   ]
+// }
+
+// type AssetAction = {
+//   type: "image" | "code" | "audio",
+//   path: string
+// }
 
 const defaultProject = {
   settings: {
@@ -41,30 +43,46 @@ export const useProject = () => {
   const { saveHistory, resetHistory } = useUndo(all_data, load, { size: savedata.settings.history_size })
   const { getItem, getItems } = useSidebarCtx()
 
-  const addAsset = useCallback((type:AssetAction["type"], path:string) => {
-    if (ObjectGet(assets, type) && !assets[type].includes(path))
-      update({ 
-        assets: {
-          ...assets,
-          [type]: [
-            ...assets[type],
-            path
-          ]
-        }
-      })
-  }, [assets, update])
+  // const addAsset = useCallback((type:AssetAction["type"], path:string) => {
+  //   if (ObjectGet(assets, type) && !assets[type].includes(path))
+  //     update({ 
+  //       assets: {
+  //         ...assets,
+  //         [type]: [
+  //           ...assets[type],
+  //           path
+  //         ]
+  //       }
+  //     })
+  // }, [assets, update])
 
-  const fileUpdate = useCallback((name: any, stat: Stats) => {
-    if (stat.isFile()) {
-      const filename = basename(name)
-      // update assets
-      Object.typedKeys(EXTENSIONS)
-        // only get extension types matching this file
-        .filter((type) => EXTENSIONS[type].some(ext => filename.endsWith(`.${ext}`)))
-        // add them to asset list
-        .forEach((type) => addAsset(type, name))
-    }
-  }, [addAsset])
+  // const fileUpdate = useCallback((name: any, stat: Stats) => {
+  //   if (stat.isFile()) {
+  //     // const filename = basename(name)
+  //     // console.log(name)
+  //     // update assets
+  //     Object.typedKeys(EXTENSIONS)
+  //       // only get extension types matching this file
+  //       .filter((type) => EXTENSIONS[type].some(ext => name.endsWith(`.${ext}`)))
+  //       // add them to asset list
+  //       .forEach((type) => {
+  //         update(prev => {
+  //           // if (prev.assets[type] && !prev.assets[type].includes(name))
+  //           // console.log(type, name)
+  //           return ({
+  //             ...prev, 
+  //             assets: {
+  //               ...prev.assets,
+  //               [type]: prev.assets[type] && prev.assets[type].includes(name) ? prev.assets[type] : [
+  //                 ...prev.assets[type],
+  //                 name
+  //               ]
+  //             }
+  //           })
+  //         })
+  //       })
+  //   }
+  // }, [])
 
   const saveProject = useCallback(() => {
     if (all_data && path) {
@@ -80,7 +98,7 @@ export const useProject = () => {
         language:"lua",
         array_width: {
           "layers.chunks.data": 16,
-          "layers.objects.edges": 1,
+          "layers.objects.properties.edges": 1,
           "layers.objects.polyline": 1
         }
       }
@@ -240,15 +258,34 @@ export const useProject = () => {
                   height: 0,
                   rotation: 0,
                   visible: true,
+                  polyline: !is_polyline ? undefined : node.node.points.map(pt => ({
+                    x: pt.x - least_x, y: pt.y - least_y
+                  })),
                   edges: node.node.edges.map(([a,b]) => [
                     { x:a.x - least_x, y:a.y - least_y },
                     { x:b.x - least_x, y:b.y - least_y }
                   ]),
-                  polyline: !is_polyline ? undefined : node.node.points.map(pt => ({
-                    x: pt.x - least_x, y: pt.y - least_y
-                  })),
-                  properties: {}
+                  properties: {} as ObjectAny
                 }
+
+                node.node.points.forEach((pt, p) => {
+                  if (pt.label) {
+                    const ilabel = getItem(pt.label._id) as LabelBody
+                    objinfo.properties[p.toString()] = Object.keys(pt.label).reduce((obj, field) => {
+                      const ifield = ilabel.fields.find(f => f.id === field)
+                      if (ifield)
+                        return {
+                          ...obj,
+                          [ifield.name]: pt.label[field]
+                        }
+                      return obj
+                    }, {})
+                  }
+                })
+
+                if (!is_polyline && objinfo.properties["0"])
+                  objinfo.properties = objinfo.properties["0"]
+
                 group.objects.push(objinfo)
               })
 
@@ -279,7 +316,7 @@ export const useProject = () => {
         })))
           .then(tilesets => Promise.all(
             Object.entries(all_data.canvas.maps)
-              .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), stringifyJSON(formatMap(data as Map, tilesets), stringify_opts)))
+              .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), "return "+stringifyJSON(formatMap(data as Map, tilesets), stringify_opts)))
           ))
       })
     }
@@ -327,25 +364,25 @@ export const useProject = () => {
   }, [savedata, saveProject])
   
   useEffect(() => {
-    let watcher:FSWatcher
-    if (path) {
-      // watch the directory for assets
-      watcher = watch(path, {
-        ignored: [
-          "**/node_modules/**",
-          /(^|[\/\\])\../
-        ]
-      })
-      watcher.on('add', fileUpdate)
-      watcher.on('change', fileUpdate)
-    }
+    // let watcher:FSWatcher
+    // if (path) {
+    //   // watch the directory for assets
+    //   watcher = watch(path, {
+    //     ignored: [
+    //       "**/node_modules/**",
+    //       /(^|[\/\\])\../
+    //     ]
+    //   })
+    //   watcher.on('add', fileUpdate)
+    //   watcher.on('change', fileUpdate)
+    // }
 
-    return () => {
-      if (watcher)
-        watcher.close()
-      watcher = null
-    }
-  }, [path, fileUpdate])
+    // return () => {
+    //   if (watcher)
+    //     watcher.close()
+    //   watcher = null
+    // }
+  }, [path])
 
   return { 
     name: basename(path || "BlankE"),
