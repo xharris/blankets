@@ -13,6 +13,7 @@
     "craco-alias": "^3.0.1",
     "electron-is-dev": "^2.0.0",
     "fs-extra": "^10.0.0",
+    "lzutf8": "^0.6.0",
     "nanoid": "^3.1.23",
     "node-sass": "^6.0.1",
     "pixi.js": "^6.0.4",

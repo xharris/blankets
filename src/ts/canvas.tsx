@@ -533,15 +533,18 @@ function useTraceUpdate(props:ObjectAny) {
 
 interface ITile extends Omit<ICanvasElement, "onDelete"> {
   tile:TileCropInfo,
-  onDelete?: (id:string, key:string) => void
+  onDelete?: (id:string, key:string) => void,
+  path?:string
 }
 
-const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ id, canvasKey, x, y, tile, onClick, onDelete, disabled, ...props }) => {
+const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ id, canvasKey, x, y, tile, path, onClick, onDelete, disabled, ...props }) => {
+  
   const [texture, setTexture] = useState<PIXI.Texture<PIXI.Resource>>()
 
   useEffect(() => {
     let cancel = false
-    PIXI.Texture.fromURL(`file://${tile.path}`)
+
+    PIXI.Texture.fromURL(`file://${path}`)
       .then(texture => {
         let new_tex = texture.clone()
 
@@ -562,7 +565,7 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ id, canvasKey, x, y, t
     return () => {
       cancel = true
     }
-  }, [tile, setTexture])
+  }, [tile, setTexture, path])
 
   const onDeleteWrap = useCallback((e) => {
     if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
@@ -1223,6 +1226,7 @@ export const Canvas = () => {
                     x={tile.x}
                     y={tile.y}
                     tile={tile.tile}
+                    path={getItem(tile.id).image}
                     key={tile.key}
                     canvasKey={tile.key}
                     disabled={current_layer !== id} 

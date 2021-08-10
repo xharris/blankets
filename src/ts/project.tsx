@@ -10,6 +10,7 @@ import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { Map } from "ts/canvas"
 import { LabelBody } from "ts/types/label"
 import { FSWatcher, watch } from "chokidar"
+import { compress, decompress } from "lzutf8"
 
 const EXTENSIONS = {
   image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
@@ -82,13 +83,14 @@ export const useProject = () => {
 
   const saveProject = useCallback(() => {
     if (all_data && path) {
-      writeFile(join(path, 'blanke.json'), JSON.stringify({
+      const json_str = JSON.stringify({
         ...all_data,
         project: {
           ...all_data.project,
           path: undefined
         }
-      }))
+      })
+      writeFile(join(path, 'data.blanke'), compress(json_str))
 
       const stringify_opts = { 
         language:"lua",
@@ -338,17 +340,18 @@ export const useProject = () => {
       update({ loading:true })
       if (result.filePaths.length > 0) {
         const new_path = result.filePaths[0]
-        const json_path = join(new_path, 'blanke.json')
+        const json_path = join(new_path, 'data.blanke')
         // if main.lua doesn't exist, ask if one should be created
         pathExists(json_path)
           .then(exists => {
             if (!exists) {
               return writeFile(json_path, JSON.stringify({}))
             } else {
-              return readFile(json_path, 'utf8').then(data => {
-                if (data.length === 0)
-                  data = "{}"
-                return JSON.parse(data)
+              return readFile(json_path).then(data => {
+                const str_data = Buffer.from(decompress(data)).toString('utf8')
+                if (str_data.length === 0)
+                  return "{}"
+                return JSON.parse(str_data)
               })
             }
           })
@@ -405,6 +408,7 @@ export const useProject = () => {
   }, [path])
 
   return { 
+    all_data,
     name: basename(path || "BlankE"),
     isOpen: !!path && !loading,
     settings: savedata.settings,
