@@ -1,4 +1,4 @@
-import { useContext, createContext, useEffect, useCallback, useReducer, Reducer } from "react"
+import { useContext, createContext, useEffect, useCallback, useReducer, Reducer, forwardRef } from "react"
 import { FC, ObjectAny } from "ts/ui"
 
 interface IGlobalCtx<T> {
@@ -14,7 +14,7 @@ type GlobalCtxAction = {
   data: ObjectAny | ((prev:ObjectAny) => any)
 }
 
-type ICreateCtx = () => [FC<React.Provider<IGlobalCtx<any>>>, IUseGlobalCtx]
+type ICreateCtx = () => [FC<React.Provider<IGlobalCtx<any>>>, IUseGlobalCtx, React.Context<IGlobalCtx<any>>]
 type IUseGlobalCtx = <T>(category?:string, defaultValue?:T) => {
   all_data?: ObjectAny,
   data: T,
@@ -81,6 +81,5 @@ export const createCtx: ICreateCtx = () => {
     }
   }
 
-  return [ GlobalCtxProvider, useGlobalCtx ]
+  return [ GlobalCtxProvider, useGlobalCtx, GlobalCtx ]
 }
-

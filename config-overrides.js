@@ -13,7 +13,7 @@ module.exports = override(
   addWebpackAlias({
     ["@src"]: path.resolve(__dirname, 'src'),
     ["@ts"]: path.resolve(__dirname, 'src/ts'),
-    ["@sass"]: path.resolve(__dirname, 'src/sass'),
+    ["@sass"]: path.resolve(__dirname, 'src/sass')
   }),
   addWebpackModuleRule({
     test: /\.worker\.[tj]s$/,

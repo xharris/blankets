@@ -10,6 +10,7 @@ import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { Map } from "ts/canvas"
 import { LabelBody } from "ts/types/label"
 import { FSWatcher, watch } from "chokidar"
+import * as PIXI from "pixi.js"
 
 const EXTENSIONS = {
   image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
@@ -34,51 +35,118 @@ const defaultProject = {
 }
 
 export const useProject = () => {
-  const { data:{ path, loading, assets }, update } = useGlobalCtx("project", {
+  const { data:{ path, loading, assets, imageQueue, textures }, update } = useGlobalCtx("project", {
     path: null,
     loading: false,
-    assets: { image:[], code:[], audio:[] }
+    assets: { image:[], code:[], audio:[] },
+    textures: {} as ObjectAny<PIXI.Texture>,
+    imageQueue: [] as string[]
   })
   const { all_data, data:savedata, load } = useSaveCtx("project", defaultProject)
   const { saveHistory, resetHistory } = useUndo(all_data, load, { size: savedata.settings.history_size })
   const { getItem, getItems } = useSidebarCtx()
 
-  // const addAsset = useCallback((type:AssetAction["type"], path:string) => {
-  //   if (ObjectGet(assets, type) && !assets[type].includes(path))
-  //     update({ 
-  //       assets: {
-  //         ...assets,
-  //         [type]: [
-  //           ...assets[type],
-  //           path
-  //         ]
-  //       }
-  //     })
-  // }, [assets, update])
+  const addTexture = useCallback((key:string, id:string, x:number, y:number, w:number, h:number) => {
+    const path = getItem(id).image
+    const baseTex = PIXI.BaseTexture.from(path)
+    const tex = new PIXI.Texture(baseTex)
+
+    x = Math.max(0, Math.min(tex.width, x))
+    y = Math.max(0, Math.min(tex.height,y))
+    if (x + w > tex.width) 
+      w -= (x + w) % tex.width
+    if (y + h > tex.height)
+      h -= (y + h) % tex.height
+
+    tex.frame = new PIXI.Rectangle(x, y, w, h)
+
+    update(prev => ({
+      textures: {
+        ...prev.textures,
+        [key]: tex
+      }
+    }))
+    return tex
+  }, [getItem])
+
+  const getTexture = (id:string, x:number, y:number, w:number, h:number) => {
+    const path = getItem(id).image
+    const baseTex = PIXI.BaseTexture.from(path)
+    const tex = new PIXI.Texture(baseTex)
+
+    x = Math.max(0, Math.min(tex.width, x))
+    y = Math.max(0, Math.min(tex.height,y))
+    if (x + w > tex.width) 
+      w -= (x + w) % tex.width
+    if (y + h > tex.height)
+      h -= (y + h) % tex.height
+
+    tex.frame = new PIXI.Rectangle(x, y, w, h)
+    
+    return tex
+  }
+
+  // const getTexture = useCallback((id:string, x:number, y:number, w:number, h:number) => {
+  //   // let {x, y, w, h} = tile
+  //   const key = [id, x, y, w, h].join(',')
+    
+  //   if (textures[key]) {
+  //     console.log('old', key)
+  //     return textures[key]
+  //   } else {
+  //     console.log("new", key)
+  //     return addTexture(key, id, x, y, w, h)
+  //   }
+  // }, [addTexture, textures])
+
 
   const fileUpdate = useCallback((files:[name: string, stat: Stats][]) => {
+    const images:string[] = []
     const new_assets = { ...assets }
     files.forEach(([name, stat]) => {
       if (stat.isFile()) {
         // const filename = basename(name)
-        // console.log(name)
         // update assets
         Object.typedKeys(EXTENSIONS)
           // only get extension types matching this file
           .filter((type) => EXTENSIONS[type].some(ext => name.endsWith(`.${ext}`)))
           // add them to asset list
           .forEach((type) => {
-            // addAsset(type, name)
+            if (type === "image") 
+              images.push(name)
+
             if (!(new_assets[type] && new_assets[type].includes(name))) {
               new_assets[type].push(name)
             }
           })
       }
     })
-    update({
-      assets: new_assets
-    })
+    update(prev => ({
+      assets: new_assets,
+      imageQueue: [
+        ...prev.imageQueue,
+        ...images 
+      ]
+    }))
+    return images
   }, [update, assets])
+
+  useEffect(() => {
+    if (!PIXI.Loader.shared.loading && imageQueue.length > 0) {
+      imageQueue
+        .forEach(name => {
+          if (!PIXI.Loader.shared.resources[name]) {
+            PIXI.Loader.shared.add(name, `file:///${name}`)
+          }
+        })
+      PIXI.Loader.shared.load(() => {
+        update({ 
+          loading:false,
+          imageQueue: imageQueue.filter(name => !PIXI.Loader.shared.resources[name])
+        })
+      })
+    }
+  }, [imageQueue, PIXI.Loader.shared.loading, update])
 
   const saveProject = useCallback(() => {
     if (all_data && path) {
@@ -101,7 +169,7 @@ export const useProject = () => {
 
       // save maps 
 
-      const formatMap = (mapdata:Map, tilesets:ItemOptions[]) => {
+      const formatMap = (mapInfo:ItemOptions, mapdata:Map, tilesets:ItemOptions[]) => {
         let lastgid = 0
         const gids:ObjectAny<number> = {}
         const image_size:ObjectAny<[number,number]> = {}
@@ -165,24 +233,24 @@ export const useProject = () => {
           }),
           layers: [
             ...Object.entries(mapdata.tiles || {}).map(([id, tiles], i) => {
-              const layer = getItem(id)
+              const snap = mapInfo.snap
               const chunk_size = [16, 16]
               const chunks:{x:number,y:number,width:number,height:number,data:number[]}[] = []
               tiles.forEach(tile => {
-                const [imagewidth] = image_size[tile.tile.path]
+                const path = getItem(tile.id).image
+                const [imagewidth] = image_size[path]
                 const [chunkx, chunky] = [
-                  Math.floor(tile.x / (layer.snap.x * chunk_size[0])) - (tile.x < 0 ? layer.snap.x : 0),
-                  Math.floor(tile.y / (layer.snap.y * chunk_size[1])) - (tile.y < 0 ? layer.snap.y : 0)
+                  Math.floor(tile.x / (snap.x * chunk_size[0])) - (tile.x < 0 ? snap.x : 0),
+                  Math.floor(tile.y / (snap.y * chunk_size[1])) - (tile.y < 0 ? snap.y : 0)
                 ]
                 let chunk = chunks.find(c => chunkx === c.x && chunky === c.y)
                 if (!chunk) {
                   chunk = { x:chunkx, y:chunky, width:chunk_size[0], height:chunk_size[1], data:(new Array(chunk_size[0] * chunk_size[1])).fill(0) }
                   chunks.push(chunk)
                 }
-                console.log(chunkx, chunky, tile.x, tile.y)
                 const [chunk_tilex, chunk_tiley] = [
-                  Math.floor(tile.x / layer.snap.x),
-                  Math.floor(tile.y / layer.snap.y)
+                  Math.floor(tile.x / snap.x),
+                  Math.floor(tile.y / snap.y)
                 ]
                 const [tilex, tiley] = [Math.floor(tile.tile.x / tile.tile.w), Math.floor(tile.tile.y / tile.tile.h)]
                 const tile_columns = imagewidth / tile.tile.w
@@ -205,7 +273,9 @@ export const useProject = () => {
                 ...layerProperties(id),
                 properties: {},
                 encoding: "lua",
-                chunks: chunks.map(c => ({ ...c, x:c.x * chunk_size[0], y:c.y * chunk_size[1] }))
+                chunks: chunks
+                  .filter(c => !c.data.every(t => t === 0))
+                  .map(c => ({ ...c, x:c.x * chunk_size[0], y:c.y * chunk_size[1] }))
               }
             }),
             // depth probably doesn't need to be sorted with tiles
@@ -314,7 +384,7 @@ export const useProject = () => {
           .then(tilesets => Promise.all(
             Object.entries(all_data.canvas.maps)
               .filter(([map]) => getItem(map))
-              .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), "return "+stringifyJSON(formatMap(data as Map, tilesets), stringify_opts)))
+              .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), "return "+stringifyJSON(formatMap(getItem(map), data as Map, tilesets), stringify_opts)))
           ))
       })
     }
@@ -322,7 +392,7 @@ export const useProject = () => {
 
   const loadProject = useCallback((new_path, load_data) => {
     load({ ...defaultProject, ...load_data })
-    update({ path:new_path, loading:false })
+    update({ path:new_path })
     resetHistory()
   }, [load, update, resetHistory])
 
@@ -349,8 +419,6 @@ export const useProject = () => {
           })
           // load blanke.json
           .then(load_data => loadProject(new_path, load_data))
-      } else {
-        update({ loading:false })
       }
     })
     .catch(() => {
@@ -385,8 +453,9 @@ export const useProject = () => {
           return arr
         }, [])
 
-        Promise.all(filenames.map(f => stat(f).then(stat => [f, stat] as [string, Stats])))
-          .then(fileUpdate)
+        if (loading && !PIXI.Loader.shared.loading)
+          Promise.all(filenames.map(f => stat(f).then(stat => [f, stat] as [string, Stats])))
+            .then(fileUpdate)
         watcher.on('add', (f, stat) => fileUpdate([[f,stat]]))
         watcher.on('change', (f, stat) => fileUpdate([[f,stat]]))
       })
@@ -397,7 +466,7 @@ export const useProject = () => {
         watcher.close()
       watcher = null
     }
-  }, [path])
+  }, [path, update, loading])
 
   return { 
     name: basename(path || "BlankE"),
@@ -408,6 +477,7 @@ export const useProject = () => {
     loading,
     openProjectDialog,
     saveProject,
-    saveHistory
+    saveHistory,
+    getTexture
   }
 }

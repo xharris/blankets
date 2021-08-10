@@ -1,3 +1,4 @@
+require('v8-compile-cache')
 const { app, BrowserWindow, Menu, protocol } = require("electron")
 const isDev = require('electron-is-dev')
 const path = require("path")
@@ -5,6 +6,11 @@ require("@electron/remote/main").initialize()
 
 app.win = null 
 let isShown = true
+
+app.commandLine.appendSwitch("enable-gpu-rasterization")
+app.commandLine.appendSwitch("ignore-gpu-blacklist")
+app.commandLine.appendSwitch("allow-file-access-from-files")
+app.commandLine.appendSwitch("enable-webgl")
 
 app.whenReady().then(() => {
   app.win = new BrowserWindow({
@@ -24,7 +30,10 @@ app.whenReady().then(() => {
       enableRemoteModule: true,
       backgroundThrottling: false,
       webSecurity: false,
-      nodeIntegrationInWorker: true
+      nodeIntegrationInWorker: true,
+      webgl: true,
+      experimentalFeatures: true,
+      experimentalCanvasFeatures: true,
     }
   })
 

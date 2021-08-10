@@ -1,19 +1,21 @@
-import { ComponentProps, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { bem, Form, useWindowSize, ObjectAny, ObjectGet, FC, useEvent, useTheme, cx, css, css_popbox, Button } from "ts/ui"
+import { ComponentProps, forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { bem, Form, useWindowSize, ObjectAny, ObjectGet, FC, useEvent, useTheme, cx, css, css_popbox, Button, useLayoutEvent } from "ts/ui"
 import { useGlobalCtx } from "ts/globalcontext"
 import * as PIXI from "pixi.js"
-import { Stage, Container, Graphics, BitmapText, Sprite, useApp } from "@inlet/react-pixi"
+// import { ParticleContainer, Stage, Container, Graphics, BitmapText, Sprite, withApp } from "react-pixi-fiber"
+import { Graphics, Stage, Group, Layer, Sprite, Text, GraphicsDrawFn, KonvaNode } from "ts/konva"
 import { useSaveCtx } from "ts/savecontext"
 import { useProject } from "ts/project"
 import { ItemOptions, useSidebarCtx } from "ts/sidebar"
 import { nanoid } from 'nanoid'
 import { LabelBody } from "ts/types/label"
+import { ContextBridge } from "ts/contextbridge"
 
 PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST
 PIXI.settings.ROUND_PIXELS = true
 
 type ElementType = "nodes"|"tiles"
-type TileCropInfo = { path:string, x:number, y:number, w:number, h:number }
+export type TileCropInfo = { x:number, y:number, w:number, h:number }
 type NodeInfo = { points:Point[], edges:Edge[], label?:string }
 
 type Edge = [Point, Point, string?]
@@ -71,10 +73,6 @@ const pointEquals = (pt1:Point, pt2:Point) => (
 )
 const edgeKey = (edge:Edge) => `${edge[0].x},${edge[0].y},${edge[1].x},${edge[1].y}`
 
-const lineStyle = {
-  join: PIXI.LINE_JOIN.ROUND
-}
-
 const bss = bem("canvas")
 
 export const useCanvasCtx = () => {
@@ -88,7 +86,9 @@ export const useCanvasCtx = () => {
   })
   const { data:{ maps = {}, current_layer, current_map }, update } = useSaveCtx<CanvasCtx>("canvas")
   const { selectedItem, getItem } = useSidebarCtx()
+  const { getTexture } = useProject()
 
+  const mapCamera = maps[current_map] ? maps[current_map].camera : { x:0, y:0 }
   const map = getItem(current_map)
   const layer = getItem(current_layer)
   const snap = map && layer ?
@@ -152,7 +152,6 @@ export const useCanvasCtx = () => {
 
     updateMap(current_map, current_layer, "tiles", 
       (ObjectGet<ITile[]>(maps, current_map, "tiles", current_layer) || []).filter(t => {
-        console.log(t)
         const removed = !(t.x >= start.x && t.y >= start.y && t.x <= end.x && t.y <= end.y)
         if (removed)
           changed = true
@@ -378,7 +377,7 @@ export const useCanvasCtx = () => {
     }))
   }, [update])
 
-  const setCamera = useCallback((x:number, y:number) => {
+  const setMapCamera = useCallback((x:number, y:number) => {
     if (current_map)
       update({
         maps: {
@@ -445,6 +444,19 @@ export const useCanvasCtx = () => {
     saveHistory()
   }, [maps, current_layer, current_map, updateMap, saveHistory])  
 
+  const [camera, setCamera] = useState({x:0,y:0})
+  const [lastMap, setLastMap] = useState("")
+  const moveCamera = useCallback((x:number, y:number) => {
+    setCamera(prev => ({ x:prev.x + x, y:prev.y + y }))
+  }, [setCamera])
+
+  useEffect(() => {
+    if (current_map !== lastMap) {
+      setCamera({ ...mapCamera })
+      setLastMap(current_map)
+    }
+  }, [current_map, mapCamera, lastMap, setLastMap, setCamera])
+
   useEvent("sidebar.item.delete", (e:CustomEventInit) => {
     switch (e.detail.type) {
       case "layer":
@@ -481,7 +493,7 @@ export const useCanvasCtx = () => {
     maps, tiles,
     current_map,
     current_layer,
-    camera: maps[current_map] ? maps[current_map].camera : { x:0, y:0 },
+    camera,
     map, 
     layer,
     snap,
@@ -491,14 +503,15 @@ export const useCanvasCtx = () => {
     editLabel,
     setEditLabel,
     onPlace, placeTile,
-    setCamera,
+    moveCamera,
+    setMapCamera,
     setSelectedTiles, 
     setDraggingNode,
     addLayer, removeLayer, 
     addMap, removeMap, 
     deleteTile, deleteNode, deleteNodePoint, deleteTileArea,
     finishNode, resetNodePath, toggleNodeEdge,
-    selectMapNode, updateNode, getNode
+    selectMapNode, updateNode, getNode, getTexture
   }
 }
 
@@ -506,68 +519,44 @@ interface ICanvasElement {
   key?:string,
   canvasKey?:string,
   id?:string,
-  x:number, 
-  y:number,
   disabled?:boolean,
-  onClick?:(e:PIXI.InteractionEvent) => void,
-  onDelete?:(e:PIXI.InteractionEvent) => void,
+  x?:number,
+  y?:number,
+  onClick?:(e:KonvaNode.KonvaEventObject<MouseEvent>) => void,
+  onDelete?:(e:KonvaNode.KonvaEventObject<any>) => void,
   item?:ItemOptions,
-  canvas?:ReturnType<typeof useCanvasCtx>
+  canvas?:ReturnType<typeof useCanvasCtx>,
+  sidebar?:ReturnType<typeof useSidebarCtx>,
+  project?:ReturnType<typeof useProject>
 }
 
-interface ITile extends ICanvasElement {
-  tile:TileCropInfo,
+interface ITile extends Omit<ICanvasElement, "onDelete"> {
+  tile: TileCropInfo,
+  onDelete?: (e:PIXI.InteractionEvent, id:string, key:string) => void,
+  renderable?:boolean
+  // interactive?:boolean
 }
 
-const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, onDelete, disabled, ...props }) => {
-  const [texture, setTexture] = useState<PIXI.Texture<PIXI.Resource>>()
-  const el_sprite = useRef<PIXI.Sprite>()
+const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ id, canvasKey, tile, renderable, ...props }) => {
+  const { deleteTile } = useCanvasCtx()
+  const { getItem } = useSidebarCtx()
 
-  useEffect(() => {
-    let cancel = false
-    PIXI.Texture.fromURL(`file://${tile.path}`)
-      .then(texture => {
-        let new_tex = texture.clone()
-
-        let {x, y, w, h} = tile
-
-        x = Math.max(0, Math.min(texture.width, x))
-        y = Math.max(0, Math.min(texture.height,y))
-        if (x + w > texture.width) 
-          w -= (x + w) % texture.width
-        if (y + h > texture.height)
-          h -= (y + h) % texture.height
-
-        new_tex.frame = new PIXI.Rectangle(x, y, w, h)
-        if (!cancel) 
-          setTexture(new_tex)
-      })
-
-    return () => {
-      cancel = true
-    }
-  }, [tile, setTexture])
-
-  return texture ? (
-    <Sprite
-      ref={el_sprite}
-      texture={texture}
-      x={x}
-      y={y}
-      interactive={!disabled}
-      pointerover={e => {
-        if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
-          onDelete(e)
-        }
-      }}
-      pointerdown={e => {
-        if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
-          onDelete(e)
-        }
-      }}
-      {...props}
+  return !renderable ? null : (
+    <Sprite 
+      {...props} 
+      path={getItem(id).image}
+      // onMouseOver={e => {
+      //   if (!e.evt.altKey && e.evt.buttons === 2) {
+      //     deleteTile(id, canvasKey)
+      //   }
+      // }}
+      // onMouseDown={e => {
+      //   if (!e.evt.altKey && e.evt.buttons === 2) {
+      //     deleteTile(id, canvasKey)
+      //   }
+      // }}
     />
-  ) : null
+  )
 }
 
 interface INodeEdge {
@@ -575,7 +564,7 @@ interface INodeEdge {
   end:Point,
   editing:boolean,
   active:boolean,
-  onClick: (e:PIXI.InteractionEvent) => void
+  onClick: (e:KonvaNode.KonvaEventObject<MouseEvent>) => void
 }
 
 const NodeEdge:FC<INodeEdge & ComponentProps<typeof Graphics>> = ({ start, end, active, editing, onClick }) => {
@@ -598,64 +587,46 @@ const NodeEdge:FC<INodeEdge & ComponentProps<typeof Graphics>> = ({ start, end, 
     ]))
   }, [start, end])
 
-  const drawEdge = useCallback((g:PIXI.Graphics) => {
-    g.clear()
-    const color = parseInt(theme.color.type.node, 16)
-    // hovering: faded bold line
-    if (hovering && editing) {
-      g.lineStyle({ ...lineStyle, width: 4, color, alpha: 0.25 })
-      g.moveTo(start.x, start.y)
-      g.lineTo(end.x, end.y)
-    }
-    // active: bold line
-    if (active) {
-      g.lineStyle({ ...lineStyle, width: 2, color })
-      g.moveTo(start.x, start.y)
-      g.lineTo(end.x, end.y)
-    }
-    // weak line
-    else {
-      g.lineStyle({ ...lineStyle, width: 2, color, alpha: 0.25 })
-      g.moveTo(start.x, start.y)
-      g.lineTo(end.x, end.y)
-    }
-  }, [start, end, theme, hovering, active])
+  const drawEdge:GraphicsDrawFn = useCallback((g) => {
+    g.moveTo(start.x, start.y)
+    g.lineTo(end.x, end.y)
+  }, [start, end])
 
 
   return (
     <Graphics
-      interactive={true}
-      pointerdown={onClick}
-      pointerover={() => setHovering(true)}
-      pointerout={() => setHovering(false)}
+      onMouseDown={onClick}
+      onMouseOver={() => setHovering(true)}
+      onMouseOut={() => setHovering(false)}
       draw={drawEdge}
       hitArea={hitArea}
+      strokeWidth={hovering && editing ? 4 : 2}
+      opacity={active ? 1 : 0.25}
+      stroke={theme.color.type.node}
     />
   )
 }
 
 interface INode extends ICanvasElement {
-  canvas:ReturnType<typeof useCanvasCtx>,
-  sidebar:ReturnType<typeof useSidebarCtx>,
   editing:boolean,
   incomplete?:boolean,
   node:NodeInfo,
   size?:number,
   selected:boolean,
-  onEdgeClick:(start:Point, end:Point, e?:PIXI.InteractionEvent) => void,
+  onEdgeClick:(start:Point, end:Point, e?:KonvaNode.KonvaEventObject<MouseEvent>) => void,
   onPointDelete:(idx:number) => void,
 }
 
-const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, sidebar, id, item, node, selected, size=3, incomplete, editing, onPointDelete, onEdgeClick, onDelete, ...props }) => {
+const Node:FC<INode & ComponentProps<typeof Group>> = ({ canvasKey, id, item, node, selected, size=3, incomplete, editing, onPointDelete, onEdgeClick, onDelete, ...props }) => {
   const [edges, setEdges] = useState<Edge[]>([])
   const theme = useTheme()
   const { points, edges:nodeEdges } = node
-  const { selectItem, selectedItem } = sidebar
+  const { selectItem, selectedItem } = useSidebarCtx()
   const { 
     layer, snap,
     camera, selectedNode,  
     selectMapNode, updateNode, setDraggingNode, setEditLabel
-  } = canvas
+  } = useCanvasCtx()
   const [dragging, setDragging] = useState(-1)
   const [hoveringPoint, setHoveringPoint] = useState<ObjectAny>({})
   
@@ -737,23 +708,16 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
     }
   }), [setHoveringPoint, hoveringPoint])
 
-  const drawPoint = useCallback((g:PIXI.Graphics) => {
-    g.clear()
-    const color = parseInt(theme.color.type.node, 16)
-    g.lineStyle({ ...lineStyle, width: 2, color })
+  const drawPoint:GraphicsDrawFn = useCallback((g) => {
     // vertex
-    if (!(incomplete || selectedNode === canvasKey))
-      g.beginFill(color, 0.25)
-    g.drawRect(0, 0, size, size)
-    if (!(incomplete || selectedNode === canvasKey))
-      g.endFill()
+    g.rect(0, 0, size, size)
     // corner position marker
     if (item.connect_type === "none")
-      g.drawRect(-2, -2, 4, 4)
-  }, [item, theme, incomplete, size, selectedNode, canvasKey])
+      g.rect(-2, -2, 4, 4)
+  }, [item, size])
 
   return (
-    <Container
+    <Group
       {...props}
       alpha={selected ? 1 : 0.75}
     >
@@ -782,7 +746,7 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
                   }
                 })
               }
-              e.stopPropagation()
+              e.evt.stopPropagation()
             }
           }}
           active={true}
@@ -818,10 +782,12 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
           y={item.connect_type === "none" ? point.y : point.y - (size/2)}
           interactive={true}
           hitArea={new PIXI.Rectangle(0, 0, extra_hit, extra_hit)}
+          strokeWidth={2}
+          fill={!(incomplete || selectedNode === canvasKey) ? theme.color.type.node : null}
           {...getHoverPointEvents(i)}
-          pointerdown={e => {
+          onMouseDown={e => {
             if (!can_edit) return 
-            if (!e.data.originalEvent.altKey && e.data.button === 2) {
+            if (!e.evt.altKey && e.evt.button === 2) {
               // delete this point
               if (!selectedItem || selectedItem.type === "node") {
                 if (points.length > 1)
@@ -843,11 +809,11 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
                 })
               }
             }
-            if (e.data.originalEvent.ctrlKey && e.data.button === 0 && can_select_map_node) {
+            if (e.evt.ctrlKey && e.evt.button === 0 && can_select_map_node) {
               selectMapNode(canvasKey)
               selectItem(id, true)
             }
-            if (e.data.button === 0) {
+            if (e.evt.button === 0) {
               // start dragging node
               if (!selectedItem || selectedItem.type === "node") {
                 setDraggingNode(true)
@@ -886,8 +852,8 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
             anchor={[0.5,0]}
             interactive={true}
             {...getHoverPointEvents(i)}
-            pointerdown={e => {
-              if (!e.data.originalEvent.altKey && e.data.button === 0) {
+            onMouseDown={e => {
+              if (!e.evt.altKey && e.evt.button === 0) {
                 // open label editor
                 setEditLabel(canvasKey, node, i, point.label._id)
               }
@@ -904,44 +870,22 @@ const Node:FC<INode & ComponentProps<typeof Container>> = ({ canvasKey, canvas, 
           anchor={[0.5,1]}
         />
       )}
-    </Container>
+    </Group>
   )
 }
 
-interface IText extends ICanvasElement {}
-
-const Text:FC<IText & ComponentProps<typeof BitmapText>> = ({ ...props }) => {
-
-  useEffect(() => {
-    if (!PIXI.BitmapFont.available["proggy_scene"])
-      PIXI.BitmapFont.from("proggy_scene", {
-        fontFamily: "ProggySquare",
-        fontSize: 16,
-        fill: 0xFAFAFA,
-        stroke: 0x212121,
-        strokeThickness: 2
-      }, {
-        chars: PIXI.BitmapFont.ASCII
-      })
-  }, [PIXI.BitmapFont.available])
-
-  return PIXI.BitmapFont.available["proggy_scene"] ? (
-    <BitmapText 
-      {...props}
-      style={{ ...props.style, fontName: "proggy_scene" }}
-    />
-  ) : null
+interface IPointerLockComponent {
+  // app: PIXI.Application,
+  enabled: boolean
 }
 
-export const PointerLock = ({ enabled=false }) => {
-  const app = useApp()
-
-  useEffect(() => {
-    if (enabled)
-      app.view.requestPointerLock()
-    else 
-      document.exitPointerLock()
-  }, [enabled])
+const PointerLock:FC<IPointerLockComponent> = ({ enabled:_=false }) => {
+  // useEffect(() => {
+  //   if (enabled)
+  //     app.view.requestPointerLock()
+  //   else 
+  //     document.exitPointerLock()
+  // }, [enabled])
 
   return <></>
 }
@@ -950,21 +894,29 @@ export const Canvas = () => {
   const [width, height] = useWindowSize()
   const [dragging, setDragging] = useState<Point>()
   const [lockPointer, setLockPointer] = useState(false)
+  const contexts = { canvas:useCanvasCtx(), sidebar:useSidebarCtx(), project:useProject() }
+  const {
+    canvas: {
+      map, layer, snap, tiles,
+      camera, moveCamera,
+      setMapCamera, 
+      current_layer, maps, current_map, node_parts, draggingNode,
+      editLabel, 
+      onPlace, deleteTile, finishNode, resetNodePath, deleteNode, deleteNodePoint, toggleNodeEdge,
+      selectMapNode, updateNode, getNode, setEditLabel, placeTile, deleteTileArea
+    },
+    sidebar: {
+      getItem, selectedItem
+    },
+    project: { loading }
+  } = contexts
   const canvas = useCanvasCtx()
   const { 
-    map, layer, snap, tiles,
-    camera:mapCamera, setCamera:setMapCamera, 
-    current_layer, maps, current_map, node_parts, draggingNode,
-    editLabel, 
-    onPlace, deleteTile, finishNode, resetNodePath, deleteNode, deleteNodePoint, toggleNodeEdge,
-    selectMapNode, updateNode, getNode, setEditLabel, placeTile, deleteTileArea
+    
   } = canvas
   const [_, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({x:0, y:0})
-  const sidebar = useSidebarCtx()
-  const { getItem, selectedItem } = sidebar
   const [pathMode, setPathMode] = useState(false)
-  const [lastMap, setLastMap] = useState("")
   const [tileLineStart, setTileLineStart] = useState<Point>()
   const [selecting, setSelecting] = useState(false)
   const [selectStart, setSelectStart] = useState<Point>()
@@ -973,22 +925,8 @@ export const Canvas = () => {
 
   const can_drag_camera = maps && current_map
 
-  const [camera, setCamera] = useState({x:0,y:0})
-  const moveCamera = useCallback((x:number, y:number) => {
-    setCamera(prev => ({ x:prev.x + x, y:prev.y + y }))
-  }, [setCamera])
-
-  useEffect(() => {
-    if (current_map !== lastMap) {
-      setCamera({ ...mapCamera })
-      setLastMap(current_map)
-    }
-  }, [current_map, mapCamera, lastMap, setLastMap, setCamera])
-
-  const drawGrid = useCallback((grid:PIXI.Graphics) => {
-    if (grid)
-      grid.clear()
-    if (grid && layer) {
+  const drawGrid:GraphicsDrawFn = useCallback((grid) => {
+    if (layer) {
       const camera_offset = { x:camera.x % snap.x, y:camera.y % snap.y }
 
       let offx = (layer.offset.x % snap.x) + camera_offset.x
@@ -996,19 +934,17 @@ export const Canvas = () => {
 
       if (snap.x > 3)
         for (let x = offx; x < width + offx; x += snap.x) {
-          grid.lineStyle({ ...lineStyle, width:1, color:0x212121, alpha:0.1 })
           grid.moveTo(x, 0)
           grid.lineTo(x, height)
         }
       if (snap.y > 3)
         for (let y = offy; y < height + offy; y += snap.y) {
-          grid.lineStyle({ ...lineStyle, width:1, color:0x212121, alpha:0.1 })
           grid.moveTo(0, y)
           grid.lineTo(width, y)
         }
     
       // draw origin
-      grid.lineStyle({ ...lineStyle, width:2, color:0x212121, alpha:0.2 })
+      // grid.lineStyle({ ...lineStyle, width:2, color:0x212121, alpha:0.2 })
       grid.moveTo(camera.x, 0)
       grid.lineTo(camera.x, height)
       grid.moveTo(0, camera.y)
@@ -1072,7 +1008,7 @@ export const Canvas = () => {
       setSelecting(false)
   }, [selecting, setSelecting, setDragging, setLockPointer, setPathMode, setMapCamera, camera, selectStart, selectEnd])
 
-  useEvent("mousemove", (e:MouseEvent) => {
+  useLayoutEvent("mousemove", (e:MouseEvent) => {
     if (dragging && can_drag_camera) {
       moveCamera(e.movementX, e.movementY)
     }
@@ -1082,9 +1018,11 @@ export const Canvas = () => {
     }))
   }, [dragging, setMousePos, camera, moveCamera])
 
-  const getLayer = (type:string) => (Object.keys(maps[current_map][type] || []) as string[])
-    .filter(lid => !!getItem(lid))
-    .sort((a, b) => getItem(a).z - getItem(b).z)
+  const getLayer = useCallback((type:string) => (Object.keys(maps[current_map][type] || []) as string[])
+    .map(lid => getItem(lid))
+    .filter(lid => lid)
+    .sort((a, b) => a.z - b.z)
+  ,[maps, current_map, getItem])
 
   const mouse = {
     x: mousePos.x - camera.x,
@@ -1103,7 +1041,7 @@ export const Canvas = () => {
 
   const inactive_alpha = 0.3
 
-  return !(map && layer) ? null : (
+  return !(map && layer) || loading ? null : (
     <div 
       className={bss({ dragging })}
       onMouseDown={() => {
@@ -1116,110 +1054,113 @@ export const Canvas = () => {
         setFocused(false)
       }}
     >
-      <Stage 
-        width={width} 
-        height={height}
-        options={{
-          backgroundColor: 0xEEEEEE,
-        }}
-        onPointerDown={e => {
-          if (e.button === 0 && !pathMode && !draggingNode && selectedItem && e.shiftKey) {
-            setSelectStart(snapped_mouse)
-            setSelectEnd(null)
-          } else if (e.button === 0 && !pathMode && !draggingNode && selectedItem && selectedItem.type === "tileset" && tiles.length > 0) 
-            setTileLineStart(snapped_mouse)
-          
-        }}
-        onPointerUp={e => {
-          if (e.button === 0 && !pathMode && !draggingNode) {
-            if (selectStart && !selectEnd) {
-              setSelectEnd(snapped_mouse)
-            }
-            if (!selectStart) {
-              if (tileLineStart) {
-                let minx:number, miny:number, maxx:number, maxy:number
-                tiles.forEach(tile => {
-                  minx = Math.min(tile.x, minx) || tile.x
-                  miny = Math.min(tile.y, miny) || tile.y
-                  maxx = Math.max(tile.x + tile.w, maxx) || tile.x + tile.w
-                  maxy = Math.max(tile.y + tile.h, maxy) || tile.y + tile.h
-                })
-
-                const [tiles_w, tiles_h] = [maxx - minx, maxy - miny]
-                const [snapx, snapy] = [snap.x, snap.y]
-
-                const start = tileLineStart
-                const end = snapped_mouse
-
-                const placements = []
-                const xsign = Math.sign(end.x - start.x)
-                const ysign = Math.sign(end.y - start.y)
-
-                if (xsign < 0) 
-                  [end.x, start.x] = [start.x, end.x]
-                if (ysign < 0)
-                  [end.y, start.y] = [end.y, start.y]
-
-                const tile_count_x = Math.max(1, Math.ceil(((end.x - start.x)) / tiles_w))
-                const tile_count_y = Math.max(1, Math.ceil(((end.y - start.y)) / tiles_h))
-                const tile_count = tile_count_x * tile_count_y
-
-                let i = 0
-                while (i < tile_count) {
-                const x = start.x + (Math.floor(tile_count_x * (i / tile_count)) * tiles_w)
-                const y = start.y + (Math.floor(tile_count_y * (i / tile_count)) * tiles_h)
-                  placements.push({
-                    x:x - (x % snapx), y:y - (y % snapy)
-                  })
-                  i++
+      <ContextBridge
+        container={children => (
+          <Stage 
+            width={width} 
+            height={height}
+            className={cx(bss(), css({ backgroundColor: "0xEEEEEE" }))}
+            onMouseDown={e => {
+              if (e.evt.button === 0 && !pathMode && !draggingNode && selectedItem && e.evt.shiftKey) {
+                setSelectStart(snapped_mouse)
+                setSelectEnd(null)
+              } else if (e.evt.button === 0 && !pathMode && !draggingNode && selectedItem && selectedItem.type === "tileset" && tiles.length > 0) 
+                setTileLineStart(snapped_mouse)
+              
+            }}
+            onMouseUp={e => {
+              if (e.evt.button === 0 && !pathMode && !draggingNode) {
+                if (selectStart && !selectEnd) {
+                  setSelectEnd(snapped_mouse)
                 }
-                placeTile(placements)
-                setTileLineStart(null)
+                if (!selectStart) {
+                  if (tileLineStart) {
+                    let minx:number, miny:number, maxx:number, maxy:number
+                    tiles.forEach(tile => {
+                      minx = Math.min(tile.x, minx) || tile.x
+                      miny = Math.min(tile.y, miny) || tile.y
+                      maxx = Math.max(tile.x + tile.w, maxx) || tile.x + tile.w
+                      maxy = Math.max(tile.y + tile.h, maxy) || tile.y + tile.h
+                    })
 
-              } else 
+                    const [tiles_w, tiles_h] = [maxx - minx, maxy - miny]
+                    const [snapx, snapy] = [snap.x, snap.y]
+
+                    const start = tileLineStart
+                    const end = snapped_mouse
+
+                    const placements = []
+                    const xsign = Math.sign(end.x - start.x)
+                    const ysign = Math.sign(end.y - start.y)
+
+                    if (xsign < 0) 
+                      [end.x, start.x] = [start.x, end.x]
+                    if (ysign < 0)
+                      [end.y, start.y] = [end.y, start.y]
+
+                    const tile_count_x = Math.max(1, Math.ceil(((end.x - start.x)) / tiles_w))
+                    const tile_count_y = Math.max(1, Math.ceil(((end.y - start.y)) / tiles_h))
+                    const tile_count = tile_count_x * tile_count_y
+
+                    let i = 0
+                    while (i < tile_count) {
+                    const x = start.x + (Math.floor(tile_count_x * (i / tile_count)) * tiles_w)
+                    const y = start.y + (Math.floor(tile_count_y * (i / tile_count)) * tiles_h)
+                      placements.push({
+                        x:x - (x % snapx), y:y - (y % snapy)
+                      })
+                      i++
+                    }
+                    placeTile(placements)
+                    setTileLineStart(null)
+
+                  } else 
+                    onPlace(snapped_mouse.x, snapped_mouse.y)
+                }
+              }
+            }}
+            onMouseMove={e => {
+              if (e.evt.button === 0 && !pathMode && !draggingNode && !selectStart) {
                 onPlace(snapped_mouse.x, snapped_mouse.y)
-            }
-          }
-        }}
-        onPointerMove={e => {
-          if (e.button === 0 && !pathMode && !draggingNode && !selectStart) {
-            onPlace(snapped_mouse.x, snapped_mouse.y)
-          }
-        }}
+              }
+            }}
+          >
+            {children}
+          </Stage>
+        )}
       >
-        <PointerLock enabled={lockPointer} />
-        {/* grid */}
-        <Container>
-          <Graphics draw={drawGrid} />
-        </Container>
+        {/* <PointerLock enabled={lockPointer} /> */}
         {/* layers */}
-        <Container
+        <Layer
           x={camera.x}
           y={camera.y}
         >
           {getLayer("tiles")
-            .map(id => (
-              <Container 
-                key={id} 
-                alpha={current_layer === id ? 1 : inactive_alpha}
+            .map(layer_opts => (
+              <Group 
+                key={layer_opts.id} 
+                alpha={current_layer === layer_opts.id ? 1 : inactive_alpha}
               >
-                {maps[current_map].tiles[id].map(tile => (
-                  <Tile 
-                    {...tile} 
-                    key={tile.key}
-                    disabled={current_layer !== id} 
-                    onDelete={() => deleteTile(tile.id, tile.key)}
-                  />
+                {maps[current_map].tiles[layer_opts.id]
+                .map(_tile => (null
+                  // <Tile 
+                  //   {...tile}
+                  //   renderable={tile.x + camera.x > -snap.x && 
+                  //     tile.y + camera.y > -snap.y && 
+                  //     tile.x + camera.x < width && 
+                  //     tile.y + camera.y < height}
+                  //   // interactive={current_layer !== layer_opts.id} 
+                  // />
                 ))}
-              </Container>
+              </Group>
             ))}
           {getLayer("nodes")
-            .map(id => (
-              <Container 
-                key={`layer-${id}`} 
-                alpha={current_layer === id ? 1 : inactive_alpha}
+            .map(layer_opts => (
+              <Group 
+                key={`layer-${layer_opts.id}`} 
+                alpha={current_layer === layer_opts.id ? 1 : inactive_alpha}
               >
-                {maps[current_map].nodes[id]
+                {maps[current_map].nodes[layer_opts.id]
                 .sort((a, b) => {
                   if (!selectedItem || selectedItem.type !== "node")
                     return 0
@@ -1234,12 +1175,10 @@ export const Canvas = () => {
                   <Node 
                     {...node}
                     canvasKey={node.key}
-                    canvas={{ ...canvas, camera }}
-                    sidebar={sidebar}
                     item={getItem(node.id)}
                     size={Math.max(6, getItem(node.id).connect_type === "none" ? snap.x : 6)}
                     key={node.key}
-                    disabled={current_layer !== id} 
+                    disabled={current_layer !== layer_opts.id} 
                     selected={selectedItem && selectedItem.id === node.id}
                     editing={selectedItem && pathMode && node.id === selectedItem.id}
                     onEdgeClick={(start, end) => toggleNodeEdge(node, start, end)}
@@ -1247,14 +1186,12 @@ export const Canvas = () => {
                     onDelete={() => deleteNode(node.key)}
                   />
                 ))}
-              </Container>
+              </Group>
             ))}
             {node_parts.length > 0 && selectedItem && (
               <Node
                 key={`incomplete-${selectedItem.id}`}
                 canvasKey={`incomplete-${selectedItem.id}`}
-                canvas={{ ...canvas, camera }}
-                sidebar={sidebar}
                 id={selectedItem.id}
                 item={selectedItem}
                 node={{
@@ -1275,9 +1212,6 @@ export const Canvas = () => {
             {(tileLineStart || selectStart) && (
               <Graphics 
                 draw={g => {
-                  g.clear()
-                  g.lineStyle({ ...lineStyle, width:2, color:0x212121, alpha:0.5 })
-
                   if (tileLineStart) {
                     g.moveTo(tileLineStart.x, tileLineStart.y)
                     g.lineTo(snapped_mouse.x, snapped_mouse.y)
@@ -1290,16 +1224,29 @@ export const Canvas = () => {
                     w += snap.x 
                     h += snap.y
                     
-                    g.beginFill(0x212121, 0.1)
-                    g.drawRoundedRect(x, y, w, h, 6)
-                    g.endFill()
+                    g.rect(x, y, w, h)
                   }
                 }}
+                // border-radius = 6
+                strokeWidth={2}
+                stroke={"#212121"}
+                alpha={0.5}
+                fill={"#212121"}
+                opacity={0.2}
               />
             )}
-        </Container>
+        </Layer>
+        {/* grid */}
+        <Layer>
+          <Graphics 
+            draw={drawGrid} 
+            strokeWidth={1}
+            stroke={"#212121"}
+            opacity={0.1}
+          />
+        </Layer>
         {/* overlay ui */}
-        <Container>
+        <Layer>
           <Text  
             key="info"
             x={width - 10}
@@ -1322,8 +1269,8 @@ export const Canvas = () => {
             text={`${snapped_mouse.x}, ${snapped_mouse.y}`}
             style={{ fontName: "proggy_scene", fontSize: 16, align: "left" }}
           />
-        </Container>
-      </Stage>
+        </Layer>
+      </ContextBridge>
       {editLabel && (
         <div
           className={cx(bss("label-editor"), css_popbox(theme.color.type.node), css`
