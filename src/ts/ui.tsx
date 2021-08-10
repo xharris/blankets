@@ -378,7 +378,6 @@ export const ObjectGet:IObjectGet = (obj, ...args) => {
 //     })
 
 export const useEvent = (type:string|string[], listener:any, deps?:DependencyList, object:EventTarget = window) => {
-  
   const callback = useCallback((...args:any[]) => {
     requestAnimationFrame(listener.bind(undefined, ...args))
   }, [listener, ...deps])
@@ -393,7 +392,9 @@ export const useEvent = (type:string|string[], listener:any, deps?:DependencyLis
 }
 
 export const useLayoutEvent = (type:string|string[], listener:any, deps?:DependencyList, object:EventTarget = window) => {
-  const callback = useCallback(listener, deps)
+  const callback = useCallback((...args:any[]) => {
+    requestAnimationFrame(listener.bind(undefined, ...args))
+  }, [listener, ...deps])
   const types = [].concat(type)
 
   useLayoutEffect(() => {

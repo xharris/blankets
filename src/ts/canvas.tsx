@@ -515,13 +515,29 @@ interface ICanvasElement {
   canvas?:ReturnType<typeof useCanvasCtx>
 }
 
-interface ITile extends ICanvasElement {
-  tile:TileCropInfo,
+function useTraceUpdate(props:ObjectAny) {
+  const prev = useRef(props);
+  useEffect(() => {
+    const changedProps = Object.entries(props).reduce<ObjectAny>((ps, [k, v]) => {
+      if (prev.current[k] !== v) {
+        ps[k] = [prev.current[k], v];
+      }
+      return ps;
+    }, {});
+    if (Object.keys(changedProps).length > 0) {
+      console.log('Changed props:', changedProps);
+    }
+    prev.current = props;
+  });
 }
 
-const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, onDelete, disabled, ...props }) => {
+interface ITile extends Omit<ICanvasElement, "onDelete"> {
+  tile:TileCropInfo,
+  onDelete?: (id:string, key:string) => void
+}
+
+const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ id, canvasKey, x, y, tile, onClick, onDelete, disabled, ...props }) => {
   const [texture, setTexture] = useState<PIXI.Texture<PIXI.Resource>>()
-  const el_sprite = useRef<PIXI.Sprite>()
 
   useEffect(() => {
     let cancel = false
@@ -548,23 +564,20 @@ const Tile:FC<ITile & ComponentProps<typeof Sprite>> = ({ x, y, tile, onClick, o
     }
   }, [tile, setTexture])
 
+  const onDeleteWrap = useCallback((e) => {
+    if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
+      onDelete(id, canvasKey)
+    }
+  }, [id, canvasKey, onDelete])
+
   return texture ? (
     <Sprite
-      ref={el_sprite}
       texture={texture}
       x={x}
       y={y}
       interactive={!disabled}
-      pointerover={e => {
-        if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
-          onDelete(e)
-        }
-      }}
-      pointerdown={e => {
-        if (!e.data.originalEvent.altKey && e.data.buttons === 2) {
-          onDelete(e)
-        }
-      }}
+      pointerover={onDeleteWrap}
+      pointerdown={onDeleteWrap}
       {...props}
     />
   ) : null
@@ -1080,7 +1093,7 @@ export const Canvas = () => {
       x:e.clientX, 
       y:e.clientY 
     }))
-  }, [dragging, setMousePos, camera, moveCamera])
+  }, [dragging, can_drag_camera, moveCamera, setMousePos])
 
   const getLayer = (type:string) => (Object.keys(maps[current_map][type] || []) as string[])
     .filter(lid => !!getItem(lid))
@@ -1102,6 +1115,7 @@ export const Canvas = () => {
   } : { ...mouse }
 
   const inactive_alpha = 0.3
+  // useTraceUpdate({ maps })
 
   return !(map && layer) ? null : (
     <div 
@@ -1203,14 +1217,18 @@ export const Canvas = () => {
                 key={id} 
                 alpha={current_layer === id ? 1 : inactive_alpha}
               >
-                {maps[current_map].tiles[id].map(tile => (
+                {maps[current_map].tiles[id].map(tile => {
+                  return (
                   <Tile 
-                    {...tile} 
+                    x={tile.x}
+                    y={tile.y}
+                    tile={tile.tile}
                     key={tile.key}
+                    canvasKey={tile.key}
                     disabled={current_layer !== id} 
-                    onDelete={() => deleteTile(tile.id, tile.key)}
+                    onDelete={deleteTile}
                   />
-                ))}
+                )})}
               </Container>
             ))}
           {getLayer("nodes")

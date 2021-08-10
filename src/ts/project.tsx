@@ -101,7 +101,8 @@ export const useProject = () => {
 
       // save maps 
 
-      const formatMap = (mapdata:Map, tilesets:ItemOptions[]) => {
+      const formatMap = (mapid:string, mapdata:Map, tilesets:ItemOptions[]) => {
+        const map = getItem(mapid)
         let lastgid = 0
         const gids:ObjectAny<number> = {}
         const image_size:ObjectAny<[number,number]> = {}
@@ -166,13 +167,17 @@ export const useProject = () => {
           layers: [
             ...Object.entries(mapdata.tiles || {}).map(([id, tiles], i) => {
               const layer = getItem(id)
+              const snap = {
+                x: layer.snap.x || map.snap.x,
+                y: layer.snap.y || map.snap.y
+              }
               const chunk_size = [16, 16]
               const chunks:{x:number,y:number,width:number,height:number,data:number[]}[] = []
               tiles.forEach(tile => {
                 const [imagewidth] = image_size[tile.tile.path]
                 const [chunkx, chunky] = [
-                  Math.floor(tile.x / (layer.snap.x * chunk_size[0])) - (tile.x < 0 ? layer.snap.x : 0),
-                  Math.floor(tile.y / (layer.snap.y * chunk_size[1])) - (tile.y < 0 ? layer.snap.y : 0)
+                  Math.floor(tile.x / (snap.x * chunk_size[0])) - (tile.x < 0 ? snap.x : 0),
+                  Math.floor(tile.y / (snap.y * chunk_size[1])) - (tile.y < 0 ? snap.y : 0)
                 ]
                 let chunk = chunks.find(c => chunkx === c.x && chunky === c.y)
                 if (!chunk) {
@@ -181,8 +186,8 @@ export const useProject = () => {
                 }
                 console.log(chunkx, chunky, tile.x, tile.y)
                 const [chunk_tilex, chunk_tiley] = [
-                  Math.floor(tile.x / layer.snap.x),
-                  Math.floor(tile.y / layer.snap.y)
+                  Math.floor(tile.x / snap.x),
+                  Math.floor(tile.y / snap.y)
                 ]
                 const [tilex, tiley] = [Math.floor(tile.tile.x / tile.tile.w), Math.floor(tile.tile.y / tile.tile.h)]
                 const tile_columns = imagewidth / tile.tile.w
@@ -314,7 +319,7 @@ export const useProject = () => {
           .then(tilesets => Promise.all(
             Object.entries(all_data.canvas.maps)
               .filter(([map]) => getItem(map))
-              .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), "return "+stringifyJSON(formatMap(data as Map, tilesets), stringify_opts)))
+              .map(([map, data]) =>  writeFile(join(path, 'assets', 'map', `${getItem(map).name}.lua`), "return "+stringifyJSON(formatMap(map, data as Map, tilesets), stringify_opts)))
           ))
       })
     }
