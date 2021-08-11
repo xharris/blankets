@@ -1,8 +1,9 @@
 import { createCtx } from "ts/context"
 
-const [ SaveCtxProvider, useSaveCtx ] = createCtx()
+const [ SaveCtxProvider, useSaveCtx, SaveCtx ] = createCtx()
 
 export {
   SaveCtxProvider,
-  useSaveCtx
+  useSaveCtx,
+  SaveCtx
 }

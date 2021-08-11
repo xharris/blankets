@@ -9,7 +9,7 @@ import { useCanvasCtx } from "ts/canvas"
 
 const bss = bem("tileset")
 
-export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, setImages }) => {
+export const Tileset: FCItemBody = ({ id, image, size, crop, name, expanded, updateItem, setImages }) => {
   // const { data:{ opened }, update } = useGlobalCtx("tileset")
   const [imageSize, setImageSize] = useState([0,0])
   const [croppedImageSize, setCroppedImageSize] = useState([0,0])
@@ -90,7 +90,7 @@ export const Tileset: FCItemBody = ({ id, image, size, crop, name, updateItem, s
               </div>
             </div>
           ),
-          () => image && (
+          () => image && expanded && (
             <div className={cx(bss("preview"), css_popbox("#212121"), css`
               background-image: url(${TileBgImage});
               background-position: ${-crop.x || 0}px ${-crop.y || 0}px;

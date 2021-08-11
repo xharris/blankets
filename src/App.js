@@ -70,7 +70,6 @@ const AppBody = () => (
       sort={{ 
         layer: (a,b) => a.z - b.z
       }}
-      noselect={["layer", "map"]}
       body={{
         layer: Layer,
         tileset: Tileset,

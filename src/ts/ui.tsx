@@ -1,7 +1,7 @@
 import { css, cx } from "@emotion/css"
 import * as FIcon from "react-feather"
 import { dialog, Menu, getCurrentWindow, require as remoteRequire } from "@electron/remote"
-import React, { FunctionComponent, HTMLAttributes, createContext, useContext, InputHTMLAttributes, FormHTMLAttributes, useState, useEffect, DependencyList, useCallback, useLayoutEffect } from "react"
+import React, { FunctionComponent, HTMLAttributes, createContext, useContext, InputHTMLAttributes, FormHTMLAttributes, useState, useEffect, DependencyList, useCallback, useLayoutEffect, useRef } from "react"
 import tinycolor from "tinycolor2"
 import { basename } from "path"
 
@@ -388,7 +388,7 @@ export const useEvent = (type:string|string[], listener:any, deps?:DependencyLis
     return () => {
       types.forEach(type =>   object.removeEventListener(type, callback))
     }
-  }, [callback])
+  }, [callback, object, types])
 }
 
 export const useLayoutEvent = (type:string|string[], listener:any, deps?:DependencyList, object:EventTarget = window) => {
@@ -402,7 +402,7 @@ export const useLayoutEvent = (type:string|string[], listener:any, deps?:Depende
     return () => {
       types.forEach(type =>   object.removeEventListener(type, callback))
     }
-  }, [callback])
+  }, [callback, object, types])
 }
 
 type IStringifyJson = (
@@ -503,3 +503,21 @@ export const dispatchEvent = (name:string, detail:CustomEventInit) => {
 }
 
 export { css, cx }
+
+// Debugging 
+
+export const useTraceUpdate = (props:ObjectAny) => {
+  const prev = useRef(props);
+  useEffect(() => {
+    const changedProps = Object.entries(props).reduce<ObjectAny>((ps, [k, v]) => {
+      if (prev.current[k] !== v) {
+        ps[k] = [prev.current[k], v];
+      }
+      return ps;
+    }, {});
+    if (Object.keys(changedProps).length > 0) {
+      console.log('Changed props:', changedProps);
+    }
+    prev.current = props;
+  });
+}

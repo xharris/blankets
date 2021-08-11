@@ -5,7 +5,7 @@ import { useProject } from "ts/project"
 const bss = bem("nav")
 
 export const Nav = () => {
-  const { all_data, settings, name, loading, isOpen, openProjectDialog, saveProject } = useProject()
+  const { all_data, settings, name, loading, isOpen, openProjectDialog, saveProject, run } = useProject()
 
   return (
     <div className={bss({ reverse: process.platform === "darwin" })}>
@@ -26,13 +26,21 @@ export const Nav = () => {
           title={settings.auto_save ? "Auto-save is turned on" : "Save project"}
           onClick={() => saveProject()} 
         />
+        <Button 
+          icon="play"
+          onClick={() => run()}
+        />
       </div>
       <div className={bss("win-buttons", { reverse: process.platform === "darwin" })}>
         <Button className={bss("max")} icon="printer" title="print project data" onClick={() => console.log(all_data)} />
         <Button className={bss("max")} icon="code" title="open dev tools" onClick={() => Electron.openDevTools()} />
 
-        <Button className={bss("min")} icon="minus" />
-        <Button className={bss("max")} icon="square" />
+        <Button className={bss("min")} icon="minus" 
+          onClick={() => getCurrentWindow().minimize()}
+        />
+        <Button className={bss("max")} icon="square" 
+          onClick={() => getCurrentWindow().isMaximized() ? getCurrentWindow().unmaximize() : getCurrentWindow().maximize()}
+        />
         <Button className={bss("close")} icon="x" color="#F44336" 
           onClick={() => getCurrentWindow().close()} 
         />

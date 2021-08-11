@@ -1,8 +1,9 @@
 import { createCtx } from "ts/context"
 
-const [ GlobalCtxProvider, useGlobalCtx ] = createCtx()
+const [ GlobalCtxProvider, useGlobalCtx, GlobalCtx ] = createCtx()
 
 export {
   GlobalCtxProvider,
-  useGlobalCtx
+  useGlobalCtx,
+  GlobalCtx
 }

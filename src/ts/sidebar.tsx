@@ -1,4 +1,4 @@
-import { MouseEvent, useCallback, useEffect, useState } from "react"
+import React, { MouseEvent, useCallback, useEffect, useState } from "react"
 import { FC, HTMLDiv, cx, css, bem, Button, Icon, Electron, useTheme, capitalize, css_popbox, ObjectAny, ValueOf, dispatchEvent } from "ts/ui"
 import { nanoid } from 'nanoid'
 import tinycolor from "tinycolor2"
@@ -16,7 +16,8 @@ export type ItemOptions = {
 
 export interface IItemBody extends ItemOptions {
   updateItem?: (id: string, data: ItemOptions) => void,
-  setImages?: (id: string, images: string[]) => void
+  setImages?: (id: string, images: string[]) => void,
+  expanded?: boolean
 }
 
 export interface FCItemBody<T=IItemBody> extends FC<T> { 
@@ -78,7 +79,7 @@ const Item: FC<IItem> = ({ className, id, name, type, isChild, children, _images
         </div>}
       </div>
       <div className={bss("item-children", { hidden:!expanded })}>
-        {children}
+        {React.Children.map(children, child => React.isValidElement(child) ? React.cloneElement(child, { expanded }) : child)}
       </div>
     </div>
   )

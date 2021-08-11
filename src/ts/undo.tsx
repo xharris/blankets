@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import { ObjectAny, useEvent } from "ts/ui"
+import { debounce } from "lodash"
 import { useGlobalCtx  } from "ts/globalcontext"
 
 type UndoOptions = {
@@ -14,20 +15,20 @@ type IUseUndo = <T>(data:ObjectAny, load:(newdata:Partial<T>) => void, options:U
 
 export const useUndo:IUseUndo = (data, load, options) => {
   const { size=10, shortcuts=true } = options
-  const { data:{ past, future }, update:update } = useGlobalCtx("history", {
+  const { data:{ past, future }, update } = useGlobalCtx("history", {
     past: [],
     future: []
   })
 
-  const saveHistory = useCallback(() => {
-    update({
+  const saveHistory = useCallback(debounce(() => {
+    update(prev => ({
       past: [
-        ...(past.length > size ? past.splice(0,1) : past), 
+        ...(prev.past.length > size ? prev.past.splice(0,1) : prev.past), 
         { ...data }
       ],
       future: []
-    })
-  }, [past, update, size, data])
+    }))
+  }, 3000), [size, data])
 
   const resetHistory = useCallback(() => {
     update({

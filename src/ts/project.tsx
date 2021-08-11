@@ -11,6 +11,7 @@ import { Map } from "ts/canvas"
 import { LabelBody } from "ts/types/label"
 import { FSWatcher, watch } from "chokidar"
 import { compress, decompress } from "lzutf8"
+import { exec } from "child_process"
 
 const EXTENSIONS = {
   image: ["jpg", "jpeg", "png", "bmp", "tga", "hdr", "pic", "exr"],
@@ -57,7 +58,7 @@ export const useProject = () => {
   //     })
   // }, [assets, update])
 
-  const fileUpdate = useCallback((files:[name: string, stat: Stats][]) => {
+  const fileUpdate = useCallback(async (files:[name: string, stat: Stats][]) => {
     const new_assets = { ...assets }
     files.forEach(([name, stat]) => {
       if (stat.isFile()) {
@@ -186,7 +187,7 @@ export const useProject = () => {
                   chunk = { x:chunkx, y:chunky, width:chunk_size[0], height:chunk_size[1], data:(new Array(chunk_size[0] * chunk_size[1])).fill(0) }
                   chunks.push(chunk)
                 }
-                console.log(chunkx, chunky, tile.x, tile.y)
+                
                 const [chunk_tilex, chunk_tiley] = [
                   Math.floor(tile.x / snap.x),
                   Math.floor(tile.y / snap.y)
@@ -366,6 +367,11 @@ export const useProject = () => {
     })
   }, [loadProject, update])
 
+  const run = useCallback(() => {
+    // ~/Applications/love-*.AppImage ${path}
+    exec(`~/Applications/love-*.AppImage ${path}`)
+  }, [path])
+
   useEffect(() => {
     const auto_save = ObjectGet(savedata, "settings", "auto_save")
     if (auto_save) {
@@ -417,6 +423,7 @@ export const useProject = () => {
     loading,
     openProjectDialog,
     saveProject,
-    saveHistory
+    saveHistory,
+    run
   }
 }
